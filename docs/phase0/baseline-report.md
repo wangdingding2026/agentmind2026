@@ -33,7 +33,7 @@ Observed result:
 331 tests collected in 0.26s
 ```
 
-## Full Test Baseline
+## Full Test Baseline Before Stabilization
 
 Command:
 
@@ -53,13 +53,14 @@ Observed result after adding the two Phase 0 retrieval fixture tests:
 318 passed, 15 failed, 4 warnings in 35.90s
 ```
 
-The failure set stayed in the same two known groups described below.
+The failure set stayed in the same two known groups described below before the
+Phase 0 stabilization pass.
 
-## Known Failure Groups
+## Resolved Baseline Failure Groups
 
 ### 1. Test isolation leaks into real user data path
 
-Several executor and Feishu-path tests write through `agentmind.storage.db` to
+Several executor and Feishu-path tests wrote through `agentmind.storage.db` to
 the real default `~/.agentmind` path instead of a temporary test directory.
 Inside the sandbox this produces either `PermissionError` or readonly SQLite
 errors.
@@ -89,7 +90,7 @@ sqlite3.OperationalError: attempt to write a readonly database
 ### 2. Embedding status tests depend on local machine state
 
 The current machine has a local embedding provider installed, so panel status
-returns `本地模型已安装`. Tests currently assume no local model exists.
+returned `本地模型已安装`. Tests assumed no local model existed.
 
 Representative failures:
 
@@ -102,6 +103,32 @@ Observed mismatch:
 ```text
 Expected: 未配置
 Actual:   本地模型已安装
+```
+
+## Phase 0 Stabilized Baseline
+
+The Phase 0 stabilization pass made tests independent of the real
+`~/.agentmind` path and independent of whether this machine has
+`sentence-transformers` installed.
+
+Implementation notes:
+
+- `tests/conftest.py` now gives each test a temporary AgentMind data/config/log
+  root by default.
+- `tests/test_panel_api.py` masks local embedding detection in the panel app
+  fixture so status tests assert configuration behavior rather than the
+  developer machine's installed packages.
+
+Command:
+
+```bash
+pytest -q
+```
+
+Observed result after stabilization:
+
+```text
+333 passed, 4 warnings in 42.21s
 ```
 
 ## Phase 0 Additions
@@ -128,11 +155,15 @@ Observed result:
 
 ## Phase 1 Entry Criteria
 
-Before starting Phase 1, the team should explicitly accept one of these paths:
+Phase 1 can start after this checkpoint because the full test suite is green.
+For Phase 1 changes, run at least:
 
-1. Fix the current test isolation and embedding-environment failures first.
-2. Proceed with Phase 1 while treating the 15 failures above as known baseline
-   failures, and require all Phase 1 touched-module tests to pass.
+```bash
+pytest tests/test_db.py tests/test_panel_api.py tests/test_router.py -q
+```
 
-Recommended path: fix the test isolation and embedding-environment failures
-before broad service-layer refactoring.
+At the end of a Phase 1 package, run:
+
+```bash
+pytest -q
+```

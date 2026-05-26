@@ -25,6 +25,7 @@ def make_panel_app(tmp_dir):
     monkeypatch.setattr("agentmind.storage.memory.CONFIG_DIR", tmp_dir / "config")
     monkeypatch.setattr("agentmind.panel.server.CONFIG_DIR", tmp_dir / "config")
     monkeypatch.setattr("agentmind.api.orchestration.CONFIG_DIR", tmp_dir / "config")
+    monkeypatch.setattr("agentmind.storage.embedding.has_local_embedding", lambda: False)
     (tmp_dir / "data" / "results").mkdir(parents=True, exist_ok=True)
     (tmp_dir / "config").mkdir(parents=True, exist_ok=True)
     # 确保 settings.yaml 存在，避免 write_text 时目录不存在

@@ -20,6 +20,32 @@ def tmp_dir():
         yield Path(d)
 
 
+@pytest.fixture(autouse=True)
+def isolated_agentmind_home(tmp_path, monkeypatch):
+    """默认隔离 AgentMind 数据目录，防止测试写入真实 ~/.agentmind。"""
+    home = tmp_path / ".agentmind"
+    data_dir = home / "data"
+    config_dir = home / "config"
+    logs_dir = home / "logs"
+    (data_dir / "results").mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr("agentmind.storage.db.DATA_HOME", home)
+    monkeypatch.setattr("agentmind.storage.db.DATA_DIR", data_dir)
+    monkeypatch.setattr("agentmind.storage.db.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("agentmind.storage.db.LOGS_DIR", logs_dir)
+    monkeypatch.setattr("agentmind.storage.memory.DATA_DIR", data_dir)
+    monkeypatch.setattr("agentmind.storage.memory.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("agentmind.memory.sqlite_store.DATA_DIR", data_dir)
+    monkeypatch.setattr("agentmind.core.core_llm.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("agentmind.config.defaults.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("agentmind.api.orchestration.CONFIG_DIR", config_dir)
+    monkeypatch.setattr("agentmind.panel.server.CONFIG_DIR", config_dir)
+
+    initialize_data_directory()
+
+
 @pytest.fixture
 def tmp_db(tmp_dir, monkeypatch):
     """临时数据库，monkeypatch DATA_DIR 使 DB 操作在临时目录"""

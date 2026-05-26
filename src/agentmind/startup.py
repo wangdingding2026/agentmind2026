@@ -178,6 +178,9 @@ class AgentMindBootstrapper:
         rule_path = self.data_home / "config" / "routes.yaml"
         agent_registry = AgentRegistry(agents_path)
         rule_engine = RuleEngine(rule_path, agent_registry=agent_registry)
+        strategy_manager = __import__(
+            "agentmind.services.strategy_manager", fromlist=["StrategyManager"]
+        ).StrategyManager(agent_registry, rule_engine)
         auth_token, token_is_new = load_or_generate_token(self.data_home)
 
         @asynccontextmanager
@@ -223,12 +226,13 @@ class AgentMindBootstrapper:
         app.state.auth_token = auth_token
         app.state.settings = settings
         app.state.rule_engine = rule_engine
+        app.state.strategy_manager = strategy_manager
         app.state.attach_registry = __import__(
             "agentmind.api.attach_registry", fromlist=["AttachRegistry"]
         ).AttachRegistry()
         app.state.routing_pipeline = __import__(
             "agentmind.routing.pipeline", fromlist=["RoutingPipeline"]
-        ).RoutingPipeline(agent_registry, rule_engine)
+        ).RoutingPipeline(agent_registry, rule_engine, strategy_manager=strategy_manager)
         app.state.agents_config_path = agents_path
 
         @app.middleware("http")

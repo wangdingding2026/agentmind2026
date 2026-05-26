@@ -135,6 +135,24 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_strategy_status_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/routing/strategies")
+                assert resp.status_code == 200
+                data = resp.json()
+                core = [s["name"] for s in data["strategies"] if s["kind"] == "core"]
+                assert core == ["explicit", "rule_engine", "llm_routing", "signal_scoring"]
+                assert any(
+                    s["name"] == "memory_recall" and s["kind"] == "auxiliary"
+                    for s in data["strategies"]
+                )
+            finally:
+                mp.undo()
+
     def test_agent_toggle(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

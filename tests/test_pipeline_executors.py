@@ -581,3 +581,25 @@ class TestRoutingPipeline:
             decision = await pipeline.run("hello", identity, {})
             assert decision.agent_id in ("a1", "a2")
             assert decision.context is not None
+
+    @pytest.mark.asyncio
+    async def test_pipeline_uses_strategy_manager_for_enabled_strategies(self):
+        from agentmind.routing.pipeline import RoutingPipeline
+        from agentmind.routing.context import RequestIdentity
+        from agentmind.services.strategy_manager import StrategyManager
+
+        ex1 = _mock_executor(healthy=True)
+        reg = _mock_registry({"a1": ex1})
+
+        class _NoRuleEngine:
+            async def match(self, message):
+                return None
+
+        manager = StrategyManager(reg, _NoRuleEngine())
+        manager.set_enabled("llm_routing", False)
+        pipeline = RoutingPipeline(reg, _NoRuleEngine(), strategy_manager=manager)
+
+        decision = await pipeline.run("hello", RequestIdentity(trace_id="t1", user_id="u1"), {})
+
+        assert decision.agent_id == "a1"
+        assert "llm_routing" not in [s.name for s in manager.get_enabled_strategies({})]

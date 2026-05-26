@@ -6,29 +6,15 @@ logger = logging.getLogger("agentmind")
 
 
 class RoutingPipeline:
-    def __init__(self, agent_registry, rule_engine):
+    def __init__(self, agent_registry, rule_engine, strategy_manager=None):
         self._agent_registry = agent_registry
         self._rule_engine = rule_engine
         self._min_confidence = 0.7
-        # 策略在第一次 run() 时惰性构建，避免循环引用
-        self._strategies = None
+        if strategy_manager is None:
+            from agentmind.services.strategy_manager import StrategyManager
 
-    def _ensure_strategies(self):
-        if self._strategies is not None:
-            return
-        from agentmind.routing.strategies.explicit_directive import ExplicitDirective
-        from agentmind.routing.strategies.memory_recall import MemoryRecallStrategy
-        from agentmind.routing.strategies.rule_engine import RuleEngineStrategy
-        from agentmind.routing.strategies.llm_routing import LLMRoutingStrategy
-        from agentmind.routing.strategies.signal_scoring import SignalScoringStrategy
-
-        self._strategies = [
-            ExplicitDirective(self._agent_registry),
-            MemoryRecallStrategy(),
-            RuleEngineStrategy(self._rule_engine),
-            LLMRoutingStrategy(self._agent_registry, {}),  # settings 在 run() 注入
-            SignalScoringStrategy(self._agent_registry),
-        ]
+            strategy_manager = StrategyManager(agent_registry, rule_engine)
+        self._strategy_manager = strategy_manager
 
     async def run(
         self, message: str, identity: RequestIdentity,
@@ -73,14 +59,7 @@ class RoutingPipeline:
     async def _run_strategies(
         self, ctx: RoutingContext, settings: dict, is_retry: bool,
     ) -> RoutingDecision:
-        self._ensure_strategies()
-
-        # 动态更新 LLMRouting 的 settings（每次请求可能不同）
-        for s in self._strategies:
-            if s.name == "llm_routing":
-                s._settings = settings
-
-        sorted_strategies = sorted(self._strategies, key=lambda s: s.priority)
+        sorted_strategies = self._strategy_manager.get_enabled_strategies(settings)
         for i, strategy in enumerate(sorted_strategies):
             result = await strategy.evaluate(ctx)
             if result is None:

@@ -53,6 +53,18 @@ def create_panel_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="Trace not found")
         return trace
 
+    @router.get("/routing/strategies")
+    async def routing_strategies(request: Request):
+        strategy_manager = getattr(request.app.state, "strategy_manager", None)
+        if strategy_manager is None:
+            from agentmind.services.strategy_manager import StrategyManager
+
+            strategy_manager = StrategyManager(
+                request.app.state.agent_registry,
+                request.app.state.rule_engine,
+            )
+        return {"strategies": strategy_manager.list_strategies()}
+
     @router.get("/agents")
     async def list_agents(request: Request):
         registry = request.app.state.agent_registry

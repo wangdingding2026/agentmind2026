@@ -248,7 +248,7 @@ class TestRoutePipelineEdgeCases:
             finally:
                 mp.undo()
 
-    def test_signal_scoring_picks_low_cost(self):
+    def test_signal_scoring_picks_low_cost(self, monkeypatch):
         """SignalScoring 策略：低成本 Agent 得分更高"""
         from agentmind.routing.strategies.signal_scoring import SignalScoringStrategy
         from agentmind.agents.base import AgentCapability
@@ -269,9 +269,39 @@ class TestRoutePipelineEdgeCases:
             def get_executor(self, aid):
                 return self.executors.get(aid)
 
+        calls = []
+
+        class FakeCapabilityRegistry:
+            def __init__(self, registry):
+                self.registry = registry
+
+            def score_inputs(self, agent_id):
+                calls.append(agent_id)
+                if agent_id == "cheap":
+                    return {
+                        "estimated_cost": 0.001,
+                        "avg_latency": 1.0,
+                        "security_level": "local",
+                        "success_rate": 1.0,
+                    }
+                if agent_id == "costly":
+                    return {
+                        "estimated_cost": 0.5,
+                        "avg_latency": 10.0,
+                        "security_level": "local",
+                        "success_rate": 1.0,
+                    }
+                return None
+
+        monkeypatch.setattr(
+            "agentmind.routing.strategies.signal_scoring.AgentCapabilityRegistry",
+            FakeCapabilityRegistry,
+        )
+
         strategy = SignalScoringStrategy(_FakeReg())
         result = strategy._score_best(["cheap", "costly"], is_retry=False)
         assert result == "cheap"
+        assert calls == ["cheap", "costly"]
 
     def test_explicit_prefix_masks_keyword_match(self):
         """① 优先级最高：@agent 即使有匹配关键词也走显式前缀"""

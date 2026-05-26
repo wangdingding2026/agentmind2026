@@ -88,6 +88,13 @@ def create_panel_router() -> APIRouter:
             })
         return {"agents": agents}
 
+    @router.get("/agents/capabilities")
+    async def list_agent_capabilities(request: Request):
+        from agentmind.services.capability_registry import AgentCapabilityRegistry
+
+        registry = AgentCapabilityRegistry(request.app.state.agent_registry)
+        return {"capabilities": registry.list_profiles()}
+
     @router.post("/agents/add")
     async def add_agent(request: Request):
         """手动添加 Agent 到 agents.yaml 并立即注册"""

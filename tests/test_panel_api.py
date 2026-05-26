@@ -112,6 +112,24 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_agent_capabilities_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/agents/capabilities")
+                assert resp.status_code == 200
+                data = resp.json()
+                assert "capabilities" in data
+                profile = data["capabilities"][0]
+                assert profile["agent_id"] == "mock_echo"
+                assert profile["protocol"] == "cli"
+                assert profile["healthy"] is True
+                assert "success_rate" in profile
+            finally:
+                mp.undo()
+
     def test_agent_restart(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

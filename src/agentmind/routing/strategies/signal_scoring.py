@@ -1,5 +1,6 @@
 from agentmind.routing.context import RoutingContext
 from agentmind.routing.strategies.base import RoutingStrategy, StrategyResult
+from agentmind.services.capability_registry import AgentCapabilityRegistry
 
 
 class SignalScoringStrategy(RoutingStrategy):
@@ -12,6 +13,7 @@ class SignalScoringStrategy(RoutingStrategy):
     def __init__(self, agent_registry):
         super().__init__(name="signal_scoring", priority=100)
         self._registry = agent_registry
+        self._capabilities = AgentCapabilityRegistry(agent_registry)
 
     async def evaluate(self, ctx: RoutingContext) -> StrategyResult:
         if ctx.candidates:
@@ -51,9 +53,25 @@ class SignalScoringStrategy(RoutingStrategy):
 
     def _score_agent(self, executor, is_retry: bool) -> float:
         cap = executor.capability
-        cost_score = 1.0 - min(1.0, cap.estimated_cost / 0.1)
-        latency_score = 1.0 - min(1.0, cap.avg_latency / 10.0)
+        profile = self._capabilities.score_inputs(cap.id) or {}
+        estimated_cost = profile.get("estimated_cost", cap.estimated_cost)
+        avg_latency = profile.get("avg_latency", cap.avg_latency)
+        success_rate = profile.get("success_rate")
+        if success_rate is None:
+            success_rate = 1.0
+        cost_score = 1.0 - min(1.0, estimated_cost / 0.1)
+        latency_score = 1.0 - min(1.0, avg_latency / 10.0)
         security_score = 1.0
         if is_retry:
-            return 0.2 * cost_score + 0.4 * latency_score + 0.4 * security_score
-        return 0.4 * cost_score + 0.3 * latency_score + 0.3 * security_score
+            return (
+                0.2 * cost_score
+                + 0.35 * latency_score
+                + 0.25 * security_score
+                + 0.2 * success_rate
+            )
+        return (
+            0.35 * cost_score
+            + 0.25 * latency_score
+            + 0.25 * security_score
+            + 0.15 * success_rate
+        )

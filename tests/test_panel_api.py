@@ -568,3 +568,74 @@ class TestServiceMetrics:
                 assert "latency_ms" in data or "throughput_1h" in data
             finally:
                 mp.undo()
+
+
+class TestPanelConfigServiceUsage:
+    def test_settings_save_uses_config_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeConfigService:
+                def __init__(self, config_dir=None):
+                    self.config_dir = config_dir
+
+                def update_settings_sections(self, sections):
+                    calls.append(sections)
+                    return {"memory": {"max_entries": 321}}
+
+            try:
+                mp.setattr("agentmind.panel.server.ConfigService", FakeConfigService)
+                resp = client.post("/panel/api/settings", json={
+                    "memory": {"max_entries": 321},
+                })
+                assert resp.status_code == 200
+                assert resp.json()["ok"] is True
+                assert calls == [{"memory": {"max_entries": 321}}]
+            finally:
+                mp.undo()
+
+    def test_rules_save_uses_config_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            writes = []
+
+            class FakeConfigService:
+                def __init__(self, config_dir=None):
+                    self.config_dir = config_dir
+
+                def read_routes(self):
+                    return {"rules": []}
+
+                def write_routes(self, data):
+                    writes.append(data)
+                    return data
+
+            try:
+                mp.setattr("agentmind.panel.server.ConfigService", FakeConfigService)
+                resp = client.post("/panel/api/rules", json={
+                    "name": "route-a",
+                    "type": "keyword",
+                    "patterns": ["hello"],
+                    "target_tags": ["general"],
+                    "priority": 10,
+                    "tags": ["demo"],
+                })
+                assert resp.status_code == 200
+                assert resp.json()["ok"] is True
+                assert writes == [{
+                    "rules": [{
+                        "name": "route-a",
+                        "type": "keyword",
+                        "patterns": ["hello"],
+                        "target_tags": ["general"],
+                        "priority": 10,
+                        "tags": ["demo"],
+                    }]
+                }]
+            finally:
+                mp.undo()

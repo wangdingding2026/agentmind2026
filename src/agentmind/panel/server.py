@@ -1,34 +1,24 @@
 import asyncio
+import inspect
 import shlex
 
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
+from agentmind.services.config_service import ConfigService
 from agentmind.storage.db import CONFIG_DIR, get_metrics, get_task_detail, get_task_stats, get_recent_errors, query_tasks
 from agentmind.storage.memory import get_memory_stats, search_memory, cleanup_memory
 
-_SENSITIVE_KEYS = {"api_key", "token", "secret", "authorization", "password"}
-
-
-def _mask_value(value):
-    """递归脱敏：dict 中检查 key，list 中递归每个元素，标量直接返回"""
-    if isinstance(value, dict):
-        masked = {}
-        for k, v in value.items():
-            if k.lower() in _SENSITIVE_KEYS or any(s in k.lower() for s in _SENSITIVE_KEYS):
-                masked[k] = "****"
-            else:
-                masked[k] = _mask_value(v)
-        return masked
-    if isinstance(value, list):
-        return [_mask_value(item) for item in value]
-    return value
-
-
 def _mask_config(config: dict) -> dict:
     """脱敏敏感配置字段，只返回 masked 值"""
-    return _mask_value(config)
+    return ConfigService(CONFIG_DIR).mask_sensitive(config)
+
+
+async def _reload_rule_engine(rule_engine):
+    result = rule_engine.reload()
+    if inspect.isawaitable(result):
+        await result
 
 
 def create_panel_router() -> APIRouter:
@@ -245,27 +235,18 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/feishu/config")
     async def feishu_get_config(request: Request):
-        path = CONFIG_DIR / "settings.yaml"
-        if path.exists():
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        else:
-            data = {}
+        data = ConfigService(CONFIG_DIR).read_settings()
         fs = data.get("feishu", {}) if isinstance(data, dict) else {}
         return {"app_id": fs.get("app_id", ""), "app_secret": fs.get("app_secret", ""), "enabled": fs.get("enabled", False)}
 
     @router.post("/feishu/config")
     async def feishu_save_config(request: Request):
         body = await request.json()
-        path = CONFIG_DIR / "settings.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
-        data["feishu"] = {
+        ConfigService(CONFIG_DIR).update_settings_sections({"feishu": {
             "enabled": body.get("enabled", False),
             "app_id": body.get("app_id", ""),
             "app_secret": body.get("app_secret", ""),
-        }
-        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+        }})
         return {"ok": True}
 
     @router.post("/feishu/connect")
@@ -279,12 +260,8 @@ def create_panel_router() -> APIRouter:
             return {"ok": False, "error": "App ID 和 App Secret 不能为空"}
 
         # 1. 持久化到 settings.yaml
-        path = CONFIG_DIR / "settings.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
-        data["feishu"] = {"enabled": True, "app_id": app_id, "app_secret": app_secret}
-        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+        feishu_config = {"enabled": True, "app_id": app_id, "app_secret": app_secret}
+        ConfigService(CONFIG_DIR).update_settings_sections({"feishu": feishu_config})
 
         # 2. 停掉旧连接（如果有）
         old = getattr(request.app.state, "feishu_adapter", None)
@@ -292,7 +269,7 @@ def create_panel_router() -> APIRouter:
             await old.stop()
 
         # 3. 更新 app.state.settings 以便重启时记住
-        request.app.state.settings["feishu"] = data["feishu"]
+        request.app.state.settings["feishu"] = feishu_config
 
         # 4. 启动新连接
         try:
@@ -331,19 +308,18 @@ def create_panel_router() -> APIRouter:
         if adapter:
             await adapter.stop()
             request.app.state.feishu_adapter = None
-        path = CONFIG_DIR / "settings.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+        service = ConfigService(CONFIG_DIR)
+        data = service.read_settings()
         if isinstance(data, dict) and "feishu" in data:
             data["feishu"]["enabled"] = False
-            path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            service.write_settings(data)
         return {"ok": True}
 
     # === 路由规则管理 ===
 
     @router.get("/rules")
     async def list_rules():
-        path = CONFIG_DIR / "routes.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+        data = ConfigService(CONFIG_DIR).read_routes()
         return {"rules": data.get("rules", []) if isinstance(data, dict) else []}
 
     @router.post("/rules")
@@ -360,10 +336,8 @@ def create_panel_router() -> APIRouter:
             "priority": body.get("priority", 10),
             "tags": body.get("tags", []),
         }
-        path = CONFIG_DIR / "routes.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
+        service = ConfigService(CONFIG_DIR)
+        data = service.read_routes()
         rules = data.get("rules", [])
         if not isinstance(rules, list):
             rules = []
@@ -373,21 +347,19 @@ def create_panel_router() -> APIRouter:
         else:
             rules.append(rule)
         data["rules"] = rules
-        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+        service.write_routes(data)
         # 热加载到运行中的引擎
-        import asyncio as _aio
-        await _aio.to_thread(request.app.state.rule_engine.reload)
+        await _reload_rule_engine(request.app.state.rule_engine)
         return {"ok": True, "name": name}
 
     @router.delete("/rules/{name}")
     async def delete_rule(name: str, request: Request):
-        path = CONFIG_DIR / "routes.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
+        service = ConfigService(CONFIG_DIR)
+        data = service.read_routes()
         if isinstance(data, dict):
             data["rules"] = [r for r in data.get("rules", []) if isinstance(r, dict) and r.get("name") != name]
-            path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-        import asyncio as _aio
-        await _aio.to_thread(request.app.state.rule_engine.reload)
+            service.write_routes(data)
+        await _reload_rule_engine(request.app.state.rule_engine)
         return {"ok": True}
 
     # === 活跃会话 ===
@@ -410,10 +382,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/settings")
     async def get_settings():
-        path = CONFIG_DIR / "settings.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
+        data = ConfigService(CONFIG_DIR).read_settings()
         return {
             "memory": data.get("memory", {}),
             "embedding": data.get("embedding", {}),
@@ -425,21 +394,18 @@ def create_panel_router() -> APIRouter:
     @router.post("/settings")
     async def save_settings(request: Request):
         body = await request.json()
-        path = CONFIG_DIR / "settings.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
+        sections = {}
         if "memory" in body:
-            data["memory"] = body["memory"]
+            sections["memory"] = body["memory"]
         if "embedding" in body:
-            data["embedding"] = body["embedding"]
+            sections["embedding"] = body["embedding"]
         if "semantic_router" in body:
-            data["semantic_router"] = body["semantic_router"]
+            sections["semantic_router"] = body["semantic_router"]
         if "history" in body:
-            data["history"] = body["history"]
+            sections["history"] = body["history"]
         if "meta" in body:
-            data["core_llm"] = body["meta"]
-        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            sections["core_llm"] = body["meta"]
+        ConfigService(CONFIG_DIR).update_settings_sections(sections)
         return {"ok": True}
 
     @router.get("/feishu/status")
@@ -453,10 +419,7 @@ def create_panel_router() -> APIRouter:
     @router.get("/embedding/status")
     async def embedding_status():
         """返回 embedding 运行时状态（本地模型是否安装、外部 API 是否配置等）"""
-        path = CONFIG_DIR / "settings.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
+        data = ConfigService(CONFIG_DIR).read_settings()
         emb_cfg = data.get("embedding", {})
 
         has_external = bool(emb_cfg.get("endpoint"))

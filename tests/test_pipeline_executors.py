@@ -137,6 +137,35 @@ class TestExecutorBase:
         aid, result, _ = await base._execute_with_fallback(["a1", "a2"], "msg")
         assert aid == "a2"
 
+    @pytest.mark.asyncio
+    async def test_execute_with_fallback_invokes_protocol_gateway(self, monkeypatch):
+        from agentmind.agents.base import TaskResult
+
+        ex1 = _mock_executor(succeed=True, output="direct-result")
+        reg = _mock_registry({"a1": ex1})
+
+        calls = []
+
+        class FakeGateway:
+            def __init__(self, registry):
+                self.registry = registry
+
+            async def invoke(self, agent_id, instruction, context=None):
+                calls.append((agent_id, instruction, context))
+                return TaskResult(success=True, output="gateway-result")
+
+        monkeypatch.setattr("agentmind.routing.executors.base.ProtocolGateway", FakeGateway)
+
+        base = ExecutorBase.__new__(ExecutorBase)
+        base._registry = reg
+
+        aid, result, error = await base._execute_with_fallback(["a1"], "msg")
+
+        assert aid == "a1"
+        assert result.output == "gateway-result"
+        assert calls == [("a1", "msg", None)]
+        assert error is None
+
 
 # ── SelfReplyExecutor ──
 

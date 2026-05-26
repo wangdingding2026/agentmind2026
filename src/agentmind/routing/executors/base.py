@@ -5,6 +5,7 @@ from agentmind.agents.base import TaskResult
 from agentmind.routing.context import RoutingContext
 from agentmind.routing.envelope import PromptEnvelope
 from agentmind.routing.side_effects.memory_writer import MemoryWriter
+from agentmind.services.protocol_gateway import ProtocolGateway
 from agentmind.storage.db import record_task_end
 
 logger = logging.getLogger("agentmind")
@@ -19,6 +20,7 @@ class ExecutorBase(ABC):
 
     def __init__(self, agent_registry):
         self._registry = agent_registry
+        self._gateway = ProtocolGateway(agent_registry)
 
     def _build_envelope(self, ctx: RoutingContext) -> str:
         return PromptEnvelope.build(ctx.raw_message, ctx.memories)
@@ -39,7 +41,11 @@ class ExecutorBase(ABC):
             if not ex:
                 continue
             try:
-                result: TaskResult = await ex.execute(envelope)
+                gateway = getattr(self, "_gateway", None)
+                if gateway is None:
+                    gateway = ProtocolGateway(self._registry)
+                    self._gateway = gateway
+                result: TaskResult = await gateway.invoke(agent_id, envelope)
                 if result.success:
                     return agent_id, result, None
                 last_error = result.error

@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgentMind 控制面板</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <style>
+    :root { --sidebar-w: 200px; --font-size: 14px; }
+    html { font-size: var(--font-size); }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 0; display: flex; min-height: 100vh; background: #f5f6f8; }
+
+    /* 侧边栏 */
+    aside.sidebar {
+      width: var(--sidebar-w); min-height: 100vh; padding: 1.25rem 0;
+      background: #1e293b; color: #e2e8f0;
+      display: flex; flex-direction: column; position: fixed; top: 0; left: 0;
+    }
+    aside.sidebar h2 {
+      margin: 0; padding: 0 1rem 1rem; font-size: 1.2rem; color: #fff;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    aside.sidebar nav { padding: 0.5rem 0; }
+    aside.sidebar nav a {
+      display: block; padding: 0.5rem 1.25rem; margin: 0.1rem 0;
+      color: #94a3b8; text-decoration: none; font-size: 1rem;
+      border-left: 3px solid transparent; transition: all 0.15s;
+    }
+    aside.sidebar nav a.active {
+      color: #fff; background: rgba(255,255,255,0.08);
+      border-left-color: #60a5fa;
+    }
+    aside.sidebar nav a:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    aside.sidebar .sidebar-footer {
+      margin-top: auto; padding: 0.75rem 1rem; font-size: 0.75rem;
+      color: #64748b; border-top: 1px solid rgba(255,255,255,0.1);
+    }
+
+    /* 内容区 */
+    main.content {
+      margin-left: var(--sidebar-w); padding: 2rem 2.5rem; flex: 1;
+      max-width: calc(100vw - var(--sidebar-w));
+    }
+    main.content h3 {
+      margin: 0 0 1.25rem; font-size: 1.25rem; font-weight: 600;
+      color: #1e293b;
+    }
+
+    /* 统计卡片 */
+    .stats-row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+    .stat-card {
+      flex: 1; min-width: 120px; padding: 0.75rem 1rem;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+      border-left: 3px solid #60a5fa;
+    }
+    .stat-card.green { border-left-color: #4caf50; }
+    .stat-card.red { border-left-color: #f44336; }
+    .stat-card.orange { border-left-color: #ff9800; }
+    .stat-card .stat-value { font-size: 1.6rem; font-weight: 700; margin: 0; color: #1e293b; }
+    .stat-card .stat-label { font-size: 0.75rem; color: #64748b; margin: 0.15rem 0 0 0; }
+
+    /* 表格 */
+    .table-wrap { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+    table { margin: 0; font-size: 0.95rem; width: 100%; border-collapse: collapse; }
+    table th {
+      background: #f8fafc; font-weight: 600; color: #475569;
+      padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; text-align: left;
+    }
+    table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    table tr:last-child td { border-bottom: none; }
+    table tr:hover td { background: #f8fafc; }
+
+    /* 健康指示灯 */
+    .health-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      vertical-align: middle; margin-right: 0.3rem;
+    }
+    .health-dot.healthy { background: #4caf50; }
+    .health-dot.unhealthy { background: #f44336; }
+    .health-dot.unknown { background: #9e9e9e; }
+
+    /* 标签 */
+    .tag {
+      display: inline-block; padding: 0.1rem 0.45rem; font-size: 0.7rem;
+      border-radius: 4px; background: #e0e7ff; color: #3730a3; margin: 0 0.1rem;
+    }
+
+    /* 配置卡片 */
+    .config-card {
+      padding: 1rem 1.25rem; margin-bottom: 0.75rem;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    }
+    .config-card h4 { margin: 0 0 0.5rem 0; font-size: 0.95rem; }
+    .config-row { display: flex; gap: 0.75rem; margin: 0.2rem 0; font-size: 0.85rem; color: #334155; }
+    .config-row .label { color: #64748b; min-width: 90px; }
+
+    /* 引导 */
+    .guide-steps { display: flex; flex-direction: column; gap: 0.75rem; }
+    .guide-step {
+      flex: 1; padding: 1.5rem 1rem; text-align: center;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    }
+    .guide-step .step-num { font-size: 1.8rem; font-weight: 700; color: #60a5fa; }
+    .guide-step h4 { margin: 0.4rem 0; font-size: 0.95rem; }
+    .guide-step p { font-size: 0.8rem; color: #64748b; margin: 0.4rem 0 0 0; }
+
+    /* 按钮 */
+    .btn-sm { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+    .btn-outline {
+      background: transparent; border: 1px solid #cbd5e1; border-radius: 6px;
+      color: #475569; padding: 0.25rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+    }
+    .btn-outline:hover { background: #f1f5f9; }
+
+    /* 错误列表 */
+    .error-item {
+      padding: 0.5rem 0.75rem; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; color: #334155;
+    }
+    .error-item:last-child { border-bottom: none; }
+
+    /* 子标题 */
+    .section-title {
+      font-size: 0.9rem; font-weight: 600; color: #475569;
+      margin: 1.25rem 0 0.5rem;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed; top: 1rem; right: 1rem; padding: 0.6rem 1rem;
+      border-radius: 6px; color: #fff; font-size: 0.85rem;
+      z-index: 9999; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #f44336; }
+    .toast.success { background: #4caf50; }
+
+    /* 页面头部栏 */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    .page-header h3 { margin: 0; }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <h2>AgentMind</h2>
+    <nav>
+      <a href="#" class="active" onclick="showPage('agents', event)">AgentMind 总览</a>
+      <a href="#" onclick="showPage('orchestrator', event)">AgentMind 编排</a>
+      <a href="#" onclick="showPage('memory', event)">AgentMind 记忆</a>
+      <a href="#" onclick="showPage('api', event)">AgentMind 配置</a>
+      <a href="#" onclick="showPage('guide', event)">快速引导</a>
+    </nav>
+    <div class="sidebar-footer" id="sidebar-status">服务运行中</div>
+  </aside>
+
+  <main class="content">
+    <!-- AgentMind 总览 -->
+    <section id="page-agents" hidden>
+      <h3>AgentMind 总览</h3>
+
+      <div class="section-title" style="font-size:1.05rem">总览</div>
+      <div class="stats-row" id="service-stats-row"></div>
+
+      <div class="section-title" style="font-size:1.05rem;margin-top:1rem">飞书通道</div>
+      <div style="font-size:0.9rem;color:#334155"><span id="feishu-status">—</span></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem">
+        <div class="section-title" style="font-size:1.05rem;margin:0">Agent 管理</div>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-outline" onclick="scanAgents()">扫描新 Agent</button>
+          <button class="btn-outline" id="btn-add-agent">手动添加</button>
+        </div>
+      </div>
+      <div class="config-card" id="add-agent-form" hidden style="margin:0.5rem 0">
+        <h4>手动添加 Agent</h4>
+        <div class="config-row"><span class="label">ID</span><input type="text" id="new-agent-id" placeholder="my_agent" style="flex:1;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem"></div>
+        <div class="config-row" style="margin-top:0.4rem"><span class="label">名称</span><input type="text" id="new-agent-name" placeholder="My Agent" style="flex:1;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem"></div>
+        <div class="config-row" style="margin-top:0.4rem"><span class="label">命令</span><input type="text" id="new-agent-cmd" placeholder="myagent -p '{instruction}'" style="flex:1;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem"></div>
+        <div class="config-row" style="margin-top:0.4rem">
+          <span class="label">标签</span>
+          <div style="position:relative;flex:1">
+            <div id="tag-dropdown-btn" onclick="toggleTagDropdown()" style="padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem;cursor:pointer;background:#fff;min-height:30px;display:flex;align-items:center;flex-wrap:wrap;gap:0.15rem">
+              <span id="tag-placeholder" style="color:#94a3b8">选择标签...</span>
+            </div>
+            <div id="tag-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:99;background:#fff;border:1px solid #e2e8f0;border-radius:4px;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
+          <button class="btn-outline" onclick="addAgent()" style="background:#4caf50;color:#fff;border-color:#4caf50">添加</button>
+          <span id="add-agent-msg" style="font-size:0.8rem;color:#4caf50;line-height:2"></span>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:0.5rem">
+        <table>
+          <thead><tr><th>名称</th><th>类型</th><th>标签</th><th>已安装</th><th>健康</th><th>操作</th></tr></thead>
+          <tbody id="agents-tbody"></tbody>
+        </table>
+      </div>
+      <div class="section-title" style="font-size:1.05rem;margin-top:1rem">路由矩阵 <button class="btn-outline" onclick="toggleRouteMatrixForm()" style="font-size:0.75rem;padding:0 0.5rem">+ 添加</button></div>
+      <div class="config-card" id="route-matrix-form" hidden style="margin-bottom:0.5rem">
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+          <input type="text" id="rm-name" placeholder="标签名" style="width:100px;padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem">
+          <input type="text" id="rm-patterns" placeholder="关键词(逗号分隔)" style="width:220px;padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem">
+          <select id="rm-first" style="padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem;width:140px"></select>
+          <select id="rm-second" style="padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem;width:140px"></select>
+          <select id="rm-type" style="padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem">
+            <option value="keyword">keyword</option><option value="prefix">prefix</option><option value="fallback">fallback</option>
+          </select>
+          <button class="btn-outline" onclick="saveRouteMatrix()" style="background:#4caf50;color:#fff;border-color:#4caf50;font-size:0.8rem">保存</button>
+        </div>
+      </div>
+      <div id="route-matrix-list" class="table-wrap" style="font-size:0.85rem">
+        <span style="color:#94a3b8;padding:0.5rem;display:block">加载中...</span>
+      </div>
+
+      <div class="section-title" style="font-size:1.05rem;margin-top:1rem">最近任务</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>时间</th><th>指令</th><th>Agent</th><th>状态</th><th>耗时</th></tr></thead>
+          <tbody id="tasks-tbody"></tbody>
+        </table>
+      </div>
+      <div class="section-title" style="font-size:1.05rem;margin-top:1rem">最近错误</div>
+      <div class="table-wrap" id="errors-list"></div>
+    </section>
+
+    <!-- API 配置 -->
+    <section id="page-api" hidden>
+      <h3>AgentMind 配置</h3>
+      <div class="section-title">飞书通道</div>
+      <div class="config-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span class="label">App ID</span><input type="text" id="feishu-app-id" placeholder="cli_xxx" style="width:180px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Secret</span><input type="password" id="feishu-app-secret" placeholder="密钥" style="width:200px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <button class="btn-outline" id="btn-feishu-toggle" onclick="toggleFeishu()" style="background:#9e9e9e;color:#fff;border-color:#9e9e9e;margin-left:auto">未连接</button>
+        <span id="feishu-save-msg" style="font-size:0.8rem;color:#4caf50"></span>
+      </div>
+
+      <div class="section-title" style="margin-top:1rem">语义路由</div>
+      <div class="config-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span class="label">Endpoint</span><input type="text" id="setting-sr-endpoint" placeholder="https://api.openai.com/v1/chat/completions" style="width:280px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Key</span><input type="password" id="setting-sr-key" placeholder="sk-xxx" style="width:180px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Model</span><input type="text" id="setting-sr-model" placeholder="gpt-4o-mini" style="width:140px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <button class="btn-outline" id="btn-sr-toggle" onclick="toggleSemantic()" style="background:#9e9e9e;color:#fff;border-color:#9e9e9e;margin-left:auto">已禁用</button>
+      </div>
+
+      <div class="section-title" style="margin-top:1rem">Embedding</div>
+      <div class="config-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span class="label">Endpoint</span><input type="text" id="setting-emb-endpoint" placeholder="https://api.openai.com/v1/embeddings" style="width:280px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Key</span><input type="password" id="setting-emb-key" placeholder="sk-xxx" style="width:180px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Model</span><input type="text" id="setting-emb-model" placeholder="text-embedding-3-small" style="width:180px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <button class="btn-outline" id="btn-emb-toggle" onclick="toggleEmbedding()" style="background:#9e9e9e;color:#fff;border-color:#9e9e9e;margin-left:auto">已禁用</button>
+      </div>
+      <div id="embedding-status-line" style="font-size:0.78rem;color:#94a3b8;margin-top:0.3rem;padding-left:0.25rem"></div>
+
+      <div class="section-title" style="margin-top:1rem">AgentMind 记忆</div>
+      <div class="config-card" style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.25rem">
+        <span class="label">条数上限</span><input type="number" id="setting-max-entries" placeholder="10000" style="width:100px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+      </div>
+      <div style="font-size:0.75rem;color:#94a3b8;padding-left:0.25rem;margin-bottom:0.75rem">设为 0 则不限制，永不清理</div>
+
+      <div class="section-title" style="margin-top:0.5rem">任务记录</div>
+      <div class="config-card" style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.25rem">
+        <span class="label">条数上限</span><input type="number" id="setting-history-max-entries" placeholder="10000" style="width:100px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">最少保留天数</span><input type="number" id="setting-history-retention-days" placeholder="30" style="width:80px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <button class="btn-outline" onclick="saveSettings()" style="background:#4caf50;color:#fff;border-color:#4caf50">保存</button>
+        <span id="settings-save-msg" style="font-size:0.8rem;color:#4caf50"></span>
+      </div>
+      <div style="font-size:0.75rem;color:#94a3b8;padding-left:0.25rem">条数上限设为 0 则不限制，永不清理</div>
+
+      <div class="section-title" style="margin-top:1rem">Core LLM（前台回复 + 记忆提炼）</div>
+      <div class="config-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <span class="label">Endpoint</span><input type="text" id="setting-core-llm-endpoint" placeholder="https://api.openai.com/v1/chat/completions" style="width:280px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Key</span><input type="password" id="setting-core-llm-key" placeholder="sk-xxx" style="width:180px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <span class="label">Model</span><input type="text" id="setting-core-llm-model" placeholder="glm-4" style="width:140px;padding:0.3rem 0.5rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.85rem">
+        <button class="btn-outline" id="btn-core-llm-toggle" onclick="toggleCoreLLM()" style="background:#9e9e9e;color:#fff;border-color:#9e9e9e;margin-left:auto">已禁用</button>
+      </div>
+      <div style="font-size:0.75rem;color:#94a3b8;padding-left:0.25rem;margin-top:0.2rem">启用后可将 AgentMind 作为有思考的大脑中枢</div>
+    </section>
+
+    <!-- AgentMind 编排 -->
+    <section id="page-orchestrator" hidden>
+      <iframe src="/panel/orchestrator/index.html" style="width:100%;height:calc((100vh - 280px) * 0.73);border:none;border-radius:8px"></iframe>
+      <div class="section-title" style="font-size:1.05rem;margin-top:0.5rem">已保存的编排计划</div>
+      <div id="orchestration-plans-list" class="table-wrap" style="font-size:0.85rem;color:#334155">
+        <span style="color:#94a3b8;padding:0.5rem;display:block">加载中...</span>
+      </div>
+
+    </section>
+
+    <!-- 快速引导 -->
+    <section id="page-guide" hidden>
+      <h3>快速引导</h3>
+      <div class="guide-steps">
+        <div class="guide-step">
+          <div class="step-num">1</div>
+          <h4>安装并扫描 Agent</h4>
+          <p>安装 Claude Code、Hermes 等 AI 工具后，打开 AgentMind 总览页点击「扫描新 Agent」自动发现</p>
+        </div>
+        <div class="guide-step">
+          <div class="step-num">2</div>
+          <h4>接入飞书</h4>
+          <p>在 AgentMind 配置页填入飞书应用的 App ID 和 Secret，保存并连接即可通过飞书 Bot 发指令</p>
+        </div>
+        <div class="guide-step">
+          <div class="step-num">3</div>
+          <h4>多 Agent 讨论</h4>
+          <p>在飞书 Bot 发送 @agent1 @agent2 讨论：话题，多个 Agent 自动轮流发言辩论，发「停」结束并生成总结</p>
+        </div>
+        <div class="guide-step">
+          <div class="step-num">4</div>
+          <h4>可视化编排</h4>
+          <p>在 AgentMind 编排页拖拽 Agent 节点构建 DAG 工作流，一键执行多步骤协作任务</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- AgentMind 记忆 -->
+    <section id="page-memory" hidden>
+      <h3>AgentMind 记忆</h3>
+
+      <div class="section-title" style="font-size:1.05rem">记忆统计</div>
+      <div class="stats-row" id="memory-stats-row"></div>
+      <div style="display:flex;gap:0.5rem;margin:1rem 0">
+        <input type="text" id="mem-query" placeholder="搜索关键词" style="flex:1;padding:0.4rem 0.6rem;border:1px solid #e2e8f0;border-radius:6px" onkeyup="if(event.key==='Enter')searchMemory()">
+        <input type="text" id="mem-user" placeholder="用户 ID" style="width:200px;padding:0.4rem 0.6rem;border:1px solid #e2e8f0;border-radius:6px" onkeyup="if(event.key==='Enter')searchMemory()">
+        <button class="btn-outline" onclick="searchMemory()">搜索</button>
+        <button class="btn-outline" onclick="cleanupMemory()" style="color:#f44336">清理过期</button>
+      </div>
+      <p style="color:#94a3b8;font-size:0.75rem;margin:0 0 0.5rem">此记忆数据完全存储在电脑本地，您可自行删减</p>
+      <div class="table-wrap" id="memory-list"></div>
+    </section>
+
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = '/panel/api';
+    let refreshTimer = null;
+    let currentPage = localStorage.getItem('agentmind_page') || 'agents';
+
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+
+    // === 页面路由 ===
+    function showPage(page, evt) {
+      currentPage = page;
+      localStorage.setItem('agentmind_page', page);
+      document.querySelectorAll('main > section').forEach(s => s.hidden = true);
+      document.getElementById('page-' + page).hidden = false;
+      document.querySelectorAll('aside.sidebar nav a').forEach(a => a.classList.remove('active'));
+      if (evt && evt.target) evt.target.classList.add('active');
+
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      if (page === 'agents') { loadAgents(); loadRouteMatrix(); }
+      else if (page === 'memory') { loadMemoryStats(); searchMemory(); }
+      else if (page === 'orchestrator') { loadOrchPlans(); }
+      else if (page === 'api') { loadFeishuConfig(); loadSettings(); }
+    }
+
+    // === 工具函数 ===
+    async function fetchAPI(path, options = {}) {
+      try {
+        const res = await fetch(API + path, options);
+        return await res.json();
+      } catch (e) {
+        showToast('请求失败: ' + e.message, 'error');
+        return null;
+      }
+    }
+
+    function showToast(msg, type = 'success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + type + ' show';
+      setTimeout(() => t.className = 'toast', 2500);
+    }
+
+    function statusBadge(status) {
+      const colors = { completed: '#4caf50', failed: '#f44336', executing: '#2196f3', routing: '#ff9800', pending: '#9e9e9e', timeout: '#f44336' };
+      const labels = { completed: '完成', failed: '失败', executing: '执行中', routing: '路由中', pending: '等待', timeout: '超时' };
+      return `<span style="color:${colors[status] || '#9e9e9e'}">${labels[status] || status}</span>`;
+    }
+
+    function healthDot(healthy) {
+      const cls = healthy === true ? 'healthy' : healthy === false ? 'unhealthy' : 'unknown';
+      const text = healthy === true ? '健康' : healthy === false ? '异常' : '未知';
+      return `<span class="health-dot ${cls}"></span>${text}`;
+    }
+
+    function formatTime(iso) {
+      if (!iso) return '-';
+      try { return new Date(iso).toLocaleString('zh-CN'); } catch { return iso; }
+    }
+
+    function formatMs(ms) {
+      if (!ms && ms !== 0) return '-';
+      if (ms < 1000) return ms + 'ms';
+      return (ms / 1000).toFixed(1) + 's';
+    }
+
+    // === AgentMind 总览 ===
+    async function loadAgents() {
+      const [agentsData, connData, svcData, fsData, tasksData, errorsData, memStats] = await Promise.all([
+        fetchAPI('/agents'), fetchAPI('/connectors'),
+        fetchAPI('/service/status'), fetchAPI('/feishu/status'),
+        fetchAPI('/tasks?limit=20'), fetchAPI('/tasks/recent-errors?limit=5'),
+        fetchAPI('/memory/stats'),
+      ]);
+      var rows = [];
+      var installedIds = {};
+
+      // 已安装的 Agent
+      if (agentsData && agentsData.agents) {
+        agentsData.agents.forEach(function(a) {
+          installedIds[a.id] = true;
+          rows.push({
+            id: a.id, name: a.name, type: a.type, tags: a.tags || [],
+            installed: true, healthy: a.healthy, enabled: a.enabled,
+          });
+        });
+      }
+
+      // 未安装的连接器
+      if (connData && connData.connectors) {
+        connData.connectors.forEach(function(c) {
+          if (!installedIds[c.id]) {
+            rows.push({
+              id: c.id, name: c.name, type: c.type, tags: c.tags || [],
+              installed: false, healthy: null, enabled: false,
+            });
+          }
+        });
+      }
+
+      if (!rows.length) {
+        document.getElementById('agents-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8">暂无 Agent</td></tr>';
+        return;
+      }
+
+      document.getElementById('agents-tbody').innerHTML = rows.map(function(a) {
+        var installCol = a.installed
+          ? '<span style="color:#4caf50">是</span>'
+          : '<span style="color:#94a3b8">否</span>';
+        var healthCol = a.installed ? healthDot(a.healthy) : '<span style="color:#94a3b8">—</span>';
+        var opsCol = a.installed
+          ? '<button class="btn-outline btn-test-conn" data-agent-id="' + escapeHtml(a.id) + '">测试</button> <button class="btn-outline btn-restart" data-agent-id="' + escapeHtml(a.id) + '">重启</button> <button class="btn-outline btn-toggle" data-agent-id="' + escapeHtml(a.id) + '" style="' + (a.enabled ? 'color:#f44336' : 'color:#4caf50') + '">' + (a.enabled ? '禁用' : '启用') + '</button>'
+          : '<span style="color:#94a3b8">未安装</span>';
+        var tagHtml = '<div class="tag-cell" style="position:relative;cursor:pointer" onclick="toggleRowTags(\'' + escapeHtml(a.id) + '\', event)">';
+        tagHtml += (a.tags||[]).map(function(t){return '<span class="tag">' + escapeHtml(t) + '</span>';}).join(' ');
+        tagHtml += ' <span style="color:#94a3b8;font-size:1.05rem;font-weight:600">+</span>';
+        tagHtml += '<div class="tag-dd" id="tag-dd-' + escapeHtml(a.id) + '" style="display:none;position:absolute;top:100%;left:0;z-index:99;background:#fff;border:1px solid #e2e8f0;border-radius:4px;max-height:180px;overflow-y:auto;box-shadow:0 2px 8px rgba(0,0,0,0.1);padding:0.25rem;min-width:160px" onclick="event.stopPropagation()"></div>';
+        tagHtml += '</div>';
+        return '<tr><td><strong>' + escapeHtml(a.name) + '</strong></td><td>' + escapeHtml(a.type) + '</td><td>' + tagHtml + '</td><td>' + installCol + '</td><td>' + healthCol + '</td><td>' + opsCol + '</td></tr>';
+      }).join('');
+
+      // 总览统计卡片
+      if (svcData) {
+        document.getElementById('service-stats-row').innerHTML =
+          '<div class="stat-card"><p class="stat-value">' + svcData.agents_total + '</p><p class="stat-label">Agent</p></div>' +
+          '<div class="stat-card green"><p class="stat-value">' + svcData.agents_healthy + '</p><p class="stat-label">健康</p></div>' +
+          '<div class="stat-card"><p class="stat-value">' + svcData.tasks_total + '</p><p class="stat-label">总任务</p></div>' +
+          '<div class="stat-card green"><p class="stat-value">' + svcData.tasks_completed + '</p><p class="stat-label">已完成</p></div>' +
+          '<div class="stat-card red"><p class="stat-value">' + svcData.tasks_failed + '</p><p class="stat-label">失败</p></div>' +
+          '<div class="stat-card orange"><p class="stat-value">' + formatMs(svcData.avg_execution_time_ms) + '</p><p class="stat-label">平均耗时</p></div>' +
+          (memStats ? '<div class="stat-card"><p class="stat-value">' + memStats.total + '</p><p class="stat-label">记忆</p></div>' : '');
+      }
+
+      // 最近任务
+      if (tasksData && tasksData.tasks) {
+        document.getElementById('tasks-tbody').innerHTML = tasksData.tasks.map(function(t) {
+          return '<tr><td>' + escapeHtml(formatTime(t.created_at)) + '</td><td>' + escapeHtml((t.user_message || '').slice(0, 60)) + '</td><td>' + escapeHtml(t.routed_agent || '-') + '</td><td>' + statusBadge(t.status) + '</td><td>' + formatMs(t.execution_time_ms) + '</td></tr>';
+        }).join('') || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">暂无任务</td></tr>';
+      }
+
+      // 最近错误
+      if (errorsData && errorsData.errors) {
+        document.getElementById('errors-list').innerHTML = errorsData.errors.length
+          ? errorsData.errors.map(function(e) {
+              return '<div class="error-item"><strong>' + escapeHtml(formatTime(e.created_at)) + '</strong> &middot; ' + escapeHtml(e.routed_agent || '-') + ' &middot; <span style="color:#f44336">' + escapeHtml((e.error_message || '').slice(0, 100)) + '</span></div>';
+            }).join('')
+          : '<div style="padding:0.75rem;color:#94a3b8;font-size:0.85rem">暂无错误</div>';
+      }
+
+      if (fsData) {
+        document.getElementById('feishu-status').innerHTML = fsData.connected
+          ? '<span style="color:#4caf50">已连接</span>'
+          : fsData.enabled ? '<span style="color:#ff9800">连接中...</span>' : '<span style="color:#94a3b8">未启用</span>';
+      }
+    }
+
+    async function restartAgent(agentId) {
+      const data = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/restart', { method: 'POST' });
+      if (data && data.error) showToast('重启失败: ' + data.error, 'error');
+      else if (data) showToast(agentId + ' 重启完成，健康: ' + data.healthy);
+      loadAgents();
+    }
+
+    async function toggleAgent(agentId) {
+      var data = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/toggle', { method: 'POST' });
+      if (data && data.error) showToast('切换失败: ' + data.error, 'error');
+      else if (data) showToast(agentId + (data.enabled ? ' 已启用' : ' 已禁用'));
+      loadAgents();
+    }
+
+    function toggleAddForm() {
+      var f = document.getElementById('add-agent-form');
+      if (!f) return;
+      f.hidden = !f.hidden;
+      if (!f.hidden) { SELECTED_TAGS = []; updateTagDisplay(); }
+    }
+    var SELECTED_TAGS = [];
+    var DEFAULT_TAGS = ['code','search','analysis','writing','general'];
+
+    function toggleRowTags(agentId, evt) {
+      evt.stopPropagation();
+      var dd = document.getElementById('tag-dd-' + agentId);
+      var isOpen = dd.style.display === 'block';
+      // 关闭所有其他下拉
+      document.querySelectorAll('.tag-dd').forEach(function(d) { d.style.display = 'none'; });
+      if (isOpen) { dd.style.display = 'none'; return; }
+      dd.style.display = 'block';
+      // 获取当前 tags
+      fetchAPI('/agents').then(function(data) {
+        var agent = (data.agents || []).find(function(a) { return a.id === agentId; });
+        var curTags = agent ? (agent.tags || []) : [];
+        dd.innerHTML = '<div style="max-height:140px;overflow-y:auto;margin-bottom:0.25rem">' +
+          DEFAULT_TAGS.map(function(t) {
+            var checked = curTags.indexOf(t) >= 0 ? 'checked' : '';
+            return '<label style="display:block;padding:0.2rem 0.5rem;font-size:0.8rem;cursor:pointer"><input type="checkbox" value="' + t + '" ' + checked + ' class="tag-cb-' + agentId + '"> ' + t + '</label>';
+          }).join('') + '</div>' +
+          '<button onclick="saveAgentTags(\'' + agentId + '\')" style="width:100%;padding:0.3rem;background:#4caf50;color:#fff;border:none;border-radius:0 0 4px 4px;font-size:0.8rem;cursor:pointer;position:sticky;bottom:0">确认</button>';
+      });
+    }
+    async function saveAgentTags(agentId) {
+      var tags = [];
+      document.querySelectorAll('.tag-cb-' + agentId + ':checked').forEach(function(cb) { tags.push(cb.value); });
+      var resp = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/tags', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({tags: tags}) });
+      if (resp && resp.ok) { loadAgents(); document.getElementById('tag-dd-' + agentId).style.display = 'none'; }
+    }
+    // 点击其他地方关闭行标签下拉
+    document.addEventListener('click', function() {
+      document.querySelectorAll('.tag-dd').forEach(function(d) { d.style.display = 'none'; });
+    });
+
+    function toggleTagDropdown() {
+      var dd = document.getElementById('tag-dropdown');
+      if (dd.style.display === 'none' || !dd.style.display) {
+        dd.style.display = 'block';
+        renderTagOptions();
+      } else {
+        dd.style.display = 'none';
+      }
+    }
+    function renderTagOptions() {
+      var dd = document.getElementById('tag-dropdown');
+      dd.innerHTML = DEFAULT_TAGS.map(function(t) {
+        var checked = SELECTED_TAGS.indexOf(t) >= 0 ? 'checked' : '';
+        return '<label style="display:block;padding:0.25rem 0.5rem;font-size:0.85rem;cursor:pointer"><input type="checkbox" value="' + t + '" ' + checked + ' onchange="toggleTag(\'' + t + '\', this.checked)" style="margin-right:0.3rem">' + t + '</label>';
+      }).join('');
+    }
+    function toggleTag(tag, checked) {
+      if (checked) {
+        if (SELECTED_TAGS.indexOf(tag) < 0) SELECTED_TAGS.push(tag);
+      } else {
+        SELECTED_TAGS = SELECTED_TAGS.filter(function(t) { return t !== tag; });
+      }
+      updateTagDisplay();
+    }
+    function updateTagDisplay() {
+      var btn = document.getElementById('tag-dropdown-btn');
+      var ph = document.getElementById('tag-placeholder');
+      if (SELECTED_TAGS.length) {
+        ph.style.display = 'none';
+        btn.childNodes.forEach(function(n) { if (n.nodeType === 3 || (n.className && n.className.indexOf('tag') >= 0)) btn.removeChild(n); });
+        btn.innerHTML = SELECTED_TAGS.map(function(t) { return '<span class="tag" style="font-size:0.75rem">' + t + '</span>'; }).join('') + '<span id="tag-placeholder"></span>';
+      } else {
+        btn.innerHTML = '<span id="tag-placeholder" style="color:#94a3b8">选择标签...</span>';
+      }
+    }
+    // 点击其他地方关闭下拉
+    document.addEventListener('click', function(e) {
+      var dd = document.getElementById('tag-dropdown');
+      var btn = document.getElementById('tag-dropdown-btn');
+      if (dd && btn && !btn.contains(e.target) && !dd.contains(e.target)) {
+        dd.style.display = 'none';
+      }
+    });
+
+    async function addAgent() {
+      var tagsStr = SELECTED_TAGS.join(', ');
+      var body = {
+        id: document.getElementById('new-agent-id').value.trim(),
+        name: document.getElementById('new-agent-name').value.trim(),
+        command: document.getElementById('new-agent-cmd').value.trim(),
+        tags: tagsStr,
+      };
+      if (!body.id || !body.name || !body.command) { showToast('请填写 ID、名称和命令', 'error'); return; }
+      var data = await fetchAPI('/agents/add', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      var el = document.getElementById('add-agent-msg');
+      if (data && data.ok) {
+        el.textContent = '已添加'; el.style.color = '#4caf50';
+        loadAgents();
+        document.getElementById('add-agent-form').hidden = true;
+        // 重置表单
+        document.getElementById('new-agent-id').value = '';
+        document.getElementById('new-agent-name').value = '';
+        document.getElementById('new-agent-cmd').value = '';
+        SELECTED_TAGS = [];
+        updateTagDisplay();
+      }
+      else { el.textContent = data?.error || '添加失败'; el.style.color = '#f44336'; }
+    }
+
+    async function scanAgents() {
+      showToast('正在扫描...');
+      try {
+        const res = await fetch('/v1/agents/scan', { method: 'POST' });
+        await res.json();
+        showToast('扫描完成');
+        loadAgents();
+      } catch (e) {
+        showToast('扫描失败: ' + e.message, 'error');
+      }
+    }
+
+    // === Agent 连接测试 ===
+    async function testConnection(agentId) {
+      showToast('测试中...');
+      try {
+        const res = await fetch('/v1/agents/' + encodeURIComponent(agentId) + '/health-check', { method: 'POST' });
+        const data = await res.json();
+        if (data.healthy) showToast(agentId + ' 连接正常');
+        else showToast(agentId + ' 连接异常', 'error');
+        loadAgents();
+      } catch (e) {
+        showToast('测试失败: ' + e.message, 'error');
+      }
+    }
+
+    // === 活跃会话 ===
+    async function loadSessions() {
+      const data = await fetchAPI('/sessions');
+      if (!data) return;
+      var listEl = document.getElementById('sessions-list');
+      if (!listEl) return;
+      var html = '';
+      if (data.discussions && data.discussions.length) {
+        html += '<div class="section-title">进行中的讨论</div>';
+        data.discussions.forEach(function(d) {
+          html += `<div class="config-card"><strong>用户 ${escapeHtml(d.user_id)}</strong> — ${d.stop ? '结束中...' : '进行中'}</div>`;
+        });
+      } else {
+        html += '<p style="color:#94a3b8;font-size:0.85rem">无进行中的讨论</p>';
+      }
+      if (data.executing_tasks && data.executing_tasks.length) {
+        html += '<div class="section-title" style="margin-top:1rem">最近执行中</div>';
+        data.executing_tasks.forEach(function(t) {
+          html += `<div class="config-card" style="cursor:pointer" onclick="document.getElementById('peek-trace-id').value='${escapeHtml(t.trace_id)}';startPeek()">
+            <strong>${escapeHtml(t.trace_id)}</strong> &middot; ${escapeHtml((t.user_message||'').slice(0,80))}
+          </div>`;
+        });
+      }
+      document.getElementById('sessions-list').innerHTML = html;
+    }
+
+    let peekSource = null;
+    function startPeek() {
+      const tid = document.getElementById('peek-trace-id').value.trim();
+      if (!tid) { showToast('请输入 trace_id', 'error'); return; }
+      stopPeek();
+      peekSource = new EventSource('/panel/api/tasks/' + encodeURIComponent(tid) + '/stream');
+      const out = document.getElementById('peek-output');
+      out.textContent = '';
+      peekSource.addEventListener('partial', function(e) {
+        var parsed = JSON.parse(e.data);
+        out.textContent += (parsed.content || '');
+        out.scrollTop = out.scrollHeight;
+      });
+      peekSource.onerror = function() { stopPeek(); };
+      showToast('已连接流');
+    }
+    function stopPeek() {
+      if (peekSource) { peekSource.close(); peekSource = null; }
+    }
+
+    // === AgentMind 记忆 ===
+    async function loadMemoryStats() {
+      const data = await fetchAPI('/memory/stats');
+      if (!data) return;
+      document.getElementById('memory-stats-row').innerHTML =
+        `<div class="stat-card"><p class="stat-value">${data.total}</p><p class="stat-label">记忆总数</p></div>` +
+        (data.latest_at ? `<div class="stat-card green"><p class="stat-value">${escapeHtml(formatTime(data.latest_at))}</p><p class="stat-label">最新记忆</p></div>` : '');
+    }
+    async function searchMemory() {
+      const q = document.getElementById('mem-query').value;
+      const uid = document.getElementById('mem-user').value;
+      const data = await fetchAPI('/memory/search?q=' + encodeURIComponent(q) + '&user_id=' + encodeURIComponent(uid) + '&limit=20');
+      if (!data || !data.memories) return;
+      document.getElementById('memory-list').innerHTML = data.memories.length
+        ? `<table><thead><tr><th>删除</th><th>摘要</th><th>来源</th><th>时间</th><th>标签</th></tr></thead><tbody>${data.memories.map(m => `
+          <tr>
+            <td><button class="btn-outline" onclick="deleteMemory('${escapeHtml(m.memory_id)}')" style="color:#f44336;padding:0 0.5rem;font-size:0.75rem">✕</button></td>
+            <td>${escapeHtml((m.summary || '').slice(0, 80))}</td>
+            <td>${escapeHtml(m.source_agent || '-')}</td>
+            <td>${escapeHtml(formatTime(m.created_at))}</td>
+            <td>${(m.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</td>
+          </tr>`).join('')}</tbody></table>`
+        : '<div style="padding:0.75rem;color:#94a3b8;font-size:0.85rem">暂无记忆</div>';
+    }
+    async function deleteMemory(memoryId) {
+      if (!confirm('确认删除这条记忆？')) return;
+      var data = await fetchAPI('/memory/' + encodeURIComponent(memoryId), { method: 'DELETE' });
+      if (data && data.ok) { showToast('已删除'); searchMemory(); loadMemoryStats(); }
+      else { showToast('删除失败', 'error'); }
+    }
+    async function cleanupMemory() {
+      if (!confirm('确认清理超过30天的记忆？')) return;
+      const data = await fetchAPI('/memory/cleanup', { method: 'POST' });
+      if (data) showToast('已清理 ' + data.deleted + ' 条记忆');
+      loadMemoryStats(); searchMemory();
+    }
+
+    // === 飞书通道配置 ===
+    function setFeishuBtn(connected) {
+      var b = document.getElementById('btn-feishu-toggle');
+      if (!b) return;
+      if (connected) {
+        b.textContent = '已连接'; b.style.background = '#4caf50'; b.style.borderColor = '#4caf50';
+      } else {
+        b.textContent = '未连接'; b.style.background = '#9e9e9e'; b.style.borderColor = '#9e9e9e';
+      }
+    }
+    async function toggleFeishu() {
+      var b = document.getElementById('btn-feishu-toggle');
+      if (b.textContent === '已连接') {
+        await disconnectFeishu();
+      } else {
+        var appId = document.getElementById('feishu-app-id').value.trim();
+        var appSecret = document.getElementById('feishu-app-secret').value.trim();
+        if (!appId || !appSecret) { showToast('请填写 App ID 和 Secret', 'error'); return; }
+        var el = document.getElementById('feishu-save-msg');
+        el.textContent = '连接中...'; el.style.color = '#2196f3';
+        var data = await fetchAPI('/feishu/connect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({app_id: appId, app_secret: appSecret}) });
+        if (data && data.ok) { el.textContent = '已连接'; el.style.color = '#4caf50'; setFeishuBtn(true); }
+        else { el.textContent = data?.error || '连接失败'; el.style.color = '#f44336'; }
+      }
+    }
+    async function loadFeishuConfig() {
+      var [cfg, st] = await Promise.all([fetchAPI('/feishu/config'), fetchAPI('/feishu/status')]);
+      if (cfg) {
+        document.getElementById('feishu-app-id').value = cfg.app_id || '';
+        document.getElementById('feishu-app-secret').value = cfg.app_secret || '';
+      }
+      if (st) setFeishuBtn(st.connected);
+    }
+    async function connectFeishu() {
+      var body = {
+        app_id: document.getElementById('feishu-app-id').value.trim(),
+        app_secret: document.getElementById('feishu-app-secret').value.trim(),
+      };
+      if (!body.app_id || !body.app_secret) { showToast('请填写 App ID 和 App Secret', 'error'); return; }
+      var el = document.getElementById('feishu-save-msg');
+      el.textContent = '连接中...'; el.style.color = '#2196f3';
+      var data = await fetchAPI('/feishu/connect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (data && data.ok) { el.textContent = '已连接'; el.style.color = '#4caf50'; document.getElementById('feishu-enabled').checked = true; }
+      else { el.textContent = data?.error || '连接失败'; el.style.color = '#f44336'; }
+    }
+    async function disconnectFeishu() {
+      var el = document.getElementById('feishu-save-msg');
+      el.textContent = '断开中...'; el.style.color = '#ff9800';
+      var data = await fetchAPI('/feishu/disconnect', { method: 'POST' });
+      if (data && data.ok) { el.textContent = '已断开'; el.style.color = '#9e9e9e'; setFeishuBtn(false); }
+      else el.textContent = '断开失败';
+    }
+
+    // === 通用设置 ===
+    async function loadSettings() {
+      var data = await fetchAPI('/settings');
+      if (!data) return;
+      var m = data.memory || {}, e = data.embedding || {}, s = data.semantic_router || {}, h = data.history || {};
+      document.getElementById('setting-max-entries').value = m.max_entries || 10000;
+      document.getElementById('setting-history-max-entries').value = h.max_entries ?? 10000;
+      document.getElementById('setting-history-retention-days').value = h.retention_days || 30;
+      document.getElementById('setting-emb-endpoint').value = e.endpoint || '';
+      document.getElementById('setting-emb-key').value = e.api_key || '';
+      document.getElementById('setting-emb-model').value = e.model || 'text-embedding-3-small';
+      document.getElementById('setting-sr-endpoint').value = s.endpoint || '';
+      document.getElementById('setting-sr-key').value = s.api_key || '';
+      document.getElementById('setting-sr-model').value = s.model || '';
+      setToggleBtn('btn-sr-toggle', s.enabled || false);
+      setToggleBtn('btn-emb-toggle', e.enabled || false);
+      var mt = data.meta || {};
+      document.getElementById('setting-core-llm-endpoint').value = mt.endpoint || '';
+      document.getElementById('setting-core-llm-key').value = mt.api_key || '';
+      document.getElementById('setting-core-llm-model').value = mt.model || '';
+      setToggleBtn('btn-core-llm-toggle', mt.enabled || false);
+      loadEmbeddingStatus();
+    }
+    function setToggleBtn(id, enabled) {
+      var b = document.getElementById(id);
+      if (!b) return;
+      if (enabled) {
+        b.textContent = '已启用'; b.style.background = '#4caf50'; b.style.borderColor = '#4caf50';
+      } else {
+        b.textContent = '已禁用'; b.style.background = '#9e9e9e'; b.style.borderColor = '#9e9e9e';
+      }
+    }
+    async function toggleSemantic() {
+      var b = document.getElementById('btn-sr-toggle');
+      var isOn = b.textContent === '已启用';
+      var enabled = !isOn;
+      if (enabled) {
+        var ep = document.getElementById('setting-sr-endpoint').value.trim();
+        var key = document.getElementById('setting-sr-key').value.trim();
+        var model = document.getElementById('setting-sr-model').value.trim();
+        if (!ep) { showToast('请填写 Endpoint', 'error'); return; }
+        if (!key) { showToast('请填写 API Key', 'error'); return; }
+        if (!model) { showToast('请填写 Model', 'error'); return; }
+      }
+      var body = {
+        semantic_router: {
+          enabled: enabled,
+          endpoint: document.getElementById('setting-sr-endpoint').value.trim(),
+          api_key: document.getElementById('setting-sr-key').value.trim(),
+          model: document.getElementById('setting-sr-model').value.trim(),
+          timeout_seconds: 5,
+        }
+      };
+      var resp = await fetchAPI('/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (resp && resp.ok) {
+        setToggleBtn('btn-sr-toggle', enabled);
+        showToast(enabled ? '语义路由已启用' : '语义路由已禁用');
+      }
+    }
+    async function toggleEmbedding() {
+      var b = document.getElementById('btn-emb-toggle');
+      var isOn = b.textContent === '已启用';
+      var enabled = !isOn;
+      if (enabled) {
+        var ep = document.getElementById('setting-emb-endpoint').value.trim();
+        var key = document.getElementById('setting-emb-key').value.trim();
+        var model = document.getElementById('setting-emb-model').value.trim();
+        if (!ep) { showToast('请填写 Endpoint', 'error'); return; }
+        if (!key) { showToast('请填写 API Key', 'error'); return; }
+        if (!model) { showToast('请填写 Model', 'error'); return; }
+      }
+      var body = {
+        embedding: {
+          enabled: enabled,
+          endpoint: document.getElementById('setting-emb-endpoint').value.trim(),
+          api_key: document.getElementById('setting-emb-key').value.trim(),
+          model: document.getElementById('setting-emb-model').value.trim() || 'text-embedding-3-small',
+          dimension: 768, timeout_seconds: 10,
+        }
+      };
+      var resp = await fetchAPI('/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (resp && resp.ok) {
+        setToggleBtn('btn-emb-toggle', enabled);
+        loadEmbeddingStatus();
+        showToast(enabled ? 'Embedding 已启用' : 'Embedding 已禁用');
+      }
+    }
+    async function loadEmbeddingStatus() {
+      try {
+        var data = await fetchAPI('/embedding/status');
+        if (!data) return;
+        var el = document.getElementById('embedding-status-line');
+        if (!el) return;
+        var parts = [];
+        if (data.has_local_model) {
+          parts.push('本地模型已安装（离线语义搜索可用）');
+        } else {
+          parts.push('建议安装本地模型，pip install agentmind[embedding]（~2GB，提供离线语义搜索后备）');
+        }
+        var color = data.has_local_model ? '#4caf50' : '#8896a7';
+        el.textContent = parts.join('');
+        el.style.color = color;
+      } catch(e) { console.error('loadEmbeddingStatus:', e); }
+    }
+    async function saveSettings() {
+      var me = parseInt(document.getElementById('setting-max-entries').value) || 10000;
+      var hm = parseInt(document.getElementById('setting-history-max-entries').value);
+      var hd = parseInt(document.getElementById('setting-history-retention-days').value);
+      var body = {
+        memory: { max_entries: me },
+        history: { max_entries: isNaN(hm) ? 10000 : hm, retention_days: isNaN(hd) ? 30 : hd },
+      };
+      var el = document.getElementById('settings-save-msg');
+      el.textContent = '保存中...'; el.style.color = '#2196f3';
+      var data = await fetchAPI('/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (data && data.ok) { el.textContent = '已保存'; el.style.color = '#4caf50'; }
+      else { el.textContent = '保存失败'; el.style.color = '#f44336'; }
+    }
+    async function toggleCoreLLM() {
+      var b = document.getElementById('btn-core-llm-toggle');
+      var isOn = b.textContent === '已启用';
+      var enabled = !isOn;
+      if (enabled) {
+        var ep = document.getElementById('setting-core-llm-endpoint').value.trim();
+        var key = document.getElementById('setting-core-llm-key').value.trim();
+        var model = document.getElementById('setting-core-llm-model').value.trim();
+        if (!ep) { showToast('请填写 Endpoint', 'error'); return; }
+        if (!key) { showToast('请填写 API Key', 'error'); return; }
+        if (!model) { showToast('请填写 Model', 'error'); return; }
+      }
+      var body = {
+        meta: {
+          enabled: enabled,
+          endpoint: document.getElementById('setting-core-llm-endpoint').value.trim(),
+          api_key: document.getElementById('setting-core-llm-key').value.trim(),
+          model: document.getElementById('setting-core-llm-model').value.trim() || 'glm-4',
+          timeout_seconds: 10,
+        }
+      };
+      var resp = await fetchAPI('/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (resp && resp.ok) {
+        setToggleBtn('btn-core-llm-toggle', enabled);
+        showToast(enabled ? 'Core LLM 已启用' : 'Core LLM 已禁用');
+      }
+    }
+
+    // === 事件委托：避免 inline onclick 注入风险 ===
+    document.getElementById('agents-tbody').addEventListener('click', function(e) {
+      const btn = e.target.closest('.btn-test-conn');
+      if (btn) { testConnection(btn.dataset.agentId); return; }
+      const rst = e.target.closest('.btn-restart');
+      if (rst) { restartAgent(rst.dataset.agentId); return; }
+      const tgl = e.target.closest('.btn-toggle');
+      if (tgl) toggleAgent(tgl.dataset.agentId);
+    });
+
+    // === 路由矩阵 ===
+    async function loadRouteMatrix() {
+      try {
+        var [rulesResp, agentsResp] = await Promise.all([fetch('/panel/api/rules'), fetchAPI('/agents')]);
+        var rulesData = await rulesResp.json();
+        var agentsData = agentsResp;
+        var el = document.getElementById('route-matrix-list');
+        if (!el) return;
+        if (!rulesData.rules || !rulesData.rules.length) {
+          el.innerHTML = '<table><thead><tr><th>标签</th><th>匹配关键词</th><th>第一选择</th><th>第二选择</th><th>类型</th><th>编辑</th><th>删除</th></tr></thead><tbody><tr><td colspan="7" style="text-align:center;color:#94a3b8">暂无规则</td></tr></tbody></table>';
+          return;
+        }
+        el.innerHTML = '<table><thead><tr><th>标签</th><th>匹配关键词</th><th>第一选择</th><th>第二选择</th><th>类型</th><th>编辑</th><th>删除</th></tr></thead><tbody>' +
+          rulesData.rules.map(function(r) {
+            var pat = (r.patterns || []).join(', ') || '-';
+            return '<tr data-rm="' + escapeHtml(r.name) + '"><td><span class="tag">' + escapeHtml(r.name) + '</span></td><td style="font-size:0.8rem">' + escapeHtml(pat) + '</td><td>' + escapeHtml(r.first_agent || r.target_agent || '-') + '</td><td>' + escapeHtml(r.second_agent || '-') + '</td><td>' + escapeHtml(r.type) + '</td><td><button class="btn-outline" onclick="editRouteMatrix(\'' + escapeHtml(r.name) + '\')" style="padding:0 0.5rem;font-size:0.75rem">编辑</button></td><td><button class="btn-outline" onclick="deleteRouteMatrix(\'' + escapeHtml(r.name) + '\')" style="color:#f44336;padding:0 0.5rem;font-size:0.75rem">✕</button></td></tr>';
+          }).join('') + '</tbody></table>';
+        // 填充 Agent 下拉
+        if (agentsData && agentsData.agents) {
+          var opts = agentsData.agents.map(function(a) { return '<option value="' + escapeHtml(a.id) + '">' + escapeHtml(a.name) + '</option>'; }).join('');
+          document.getElementById('rm-first').innerHTML = '<option value="">—</option>' + opts;
+          document.getElementById('rm-second').innerHTML = '<option value="">—</option>' + opts;
+        }
+      } catch(e) {}
+    }
+    function toggleRouteMatrixForm() {
+      var f = document.getElementById('route-matrix-form');
+      f.hidden = !f.hidden;
+      if (!f.hidden) { document.getElementById('rm-name').value = ''; document.getElementById('rm-patterns').value = ''; }
+    }
+    function editRouteMatrix(name) {
+      // 关闭其他编辑行
+      document.querySelectorAll('.rm-edit-row').forEach(function(r){ r.remove(); });
+      fetch('/panel/api/rules').then(function(r){return r.json()}).then(function(d){
+        var rule = (d.rules||[]).find(function(r){return r.name===name});
+        if (!rule) return;
+        var pat = (rule.patterns||[]).join(', ');
+        var row = document.querySelector('tr[data-rm="' + name + '"]');
+        if (!row) return;
+        var editRow = document.createElement('tr');
+        editRow.className = 'rm-edit-row';
+        editRow.innerHTML = '<td colspan="7" style="padding:0.5rem"><div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">' +
+          '<input id="rm-edit-patterns" value="' + escapeHtml(pat) + '" style="flex:1;min-width:200px;padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem" placeholder="关键词(逗号分隔)">' +
+          '<select id="rm-edit-first" style="padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem;width:130px">' + (document.getElementById('rm-first') ? document.getElementById('rm-first').innerHTML : '') + '</select>' +
+          '<select id="rm-edit-second" style="padding:0.3rem;border:1px solid #e2e8f0;border-radius:4px;font-size:0.8rem;width:130px">' + (document.getElementById('rm-second') ? document.getElementById('rm-second').innerHTML : '') + '</select>' +
+          '<button onclick="saveRouteMatrixInline(\'' + escapeHtml(name) + '\')" style="padding:0.3rem 0.6rem;background:#4caf50;color:#fff;border:none;border-radius:4px;font-size:0.8rem;cursor:pointer">保存</button>' +
+          '<button onclick="document.querySelectorAll(\'.rm-edit-row\').forEach(function(r){r.remove()})" style="padding:0.3rem 0.6rem;background:#9e9e9e;color:#fff;border:none;border-radius:4px;font-size:0.8rem;cursor:pointer">取消</button>' +
+          '</div></td>';
+        row.parentNode.insertBefore(editRow, row.nextSibling);
+        if (document.getElementById('rm-edit-first')) {
+          document.getElementById('rm-edit-first').value = rule.first_agent || '';
+          document.getElementById('rm-edit-second').value = rule.second_agent || '';
+        }
+      });
+    }
+    async function saveRouteMatrixInline(name) {
+      var body = {
+        name: name,
+        type: 'keyword',
+        patterns: (document.getElementById('rm-edit-patterns').value || '').split(',').map(function(s){return s.trim()}).filter(Boolean),
+        first_agent: document.getElementById('rm-edit-first').value,
+        second_agent: document.getElementById('rm-edit-second').value,
+        priority: 10,
+      };
+      var resp = await fetch('/panel/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      var data = await resp.json();
+      if (data && data.ok) { showToast('已保存'); loadRouteMatrix(); }
+      else showToast('保存失败', 'error');
+    }
+    async function saveRouteMatrix() {
+      var name = document.getElementById('rm-name').value.trim();
+      if (!name) { showToast('请输入标签名', 'error'); return; }
+      var body = {
+        name: name,
+        type: document.getElementById('rm-type').value,
+        patterns: document.getElementById('rm-patterns').value.split(',').map(function(s){return s.trim()}).filter(Boolean),
+        first_agent: document.getElementById('rm-first').value,
+        second_agent: document.getElementById('rm-second').value,
+        priority: 10,
+      };
+      var resp = await fetch('/panel/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      var data = await resp.json();
+      if (data && data.ok) { showToast('规则已保存'); loadRouteMatrix(); document.getElementById('route-matrix-form').hidden = true; }
+      else showToast('保存失败', 'error');
+    }
+    async function deleteRouteMatrix(name) {
+      if (!confirm('确认删除规则 ' + name + '？')) return;
+      var resp = await fetch('/panel/api/rules/' + encodeURIComponent(name), { method: 'DELETE' });
+      var data = await resp.json();
+      if (data && data.ok) { showToast('已删除'); loadRouteMatrix(); }
+      else showToast('删除失败', 'error');
+    }
+
+    // === 编排计划 ===
+    async function loadOrchPlans() {
+      try {
+        var resp = await fetch('/v1/orchestrations/list');
+        var data = await resp.json();
+        var el = document.getElementById('orchestration-plans-list');
+        if (!el) return;
+        var rows = (data.plans || []).map(function(p) {
+            var tw = (p.trigger_words || []).join(', ') || '无';
+            var flow = (p.steps || []).map(function(s) {
+              return '<span class="tag">' + escapeHtml(s.agent_id) + '</span> → <small>' + escapeHtml((s.instruction || '').slice(0, 30)) + '</small>';
+            }).join('<br>') || '无步骤';
+            var count = p.usage_count || 0;
+            return '<tr><td><strong>' + escapeHtml(p.name) + '</strong></td><td>' + escapeHtml(tw) + '</td><td style="font-size:0.8rem">' + flow + '</td><td>' + count + '</td><td><button class="btn-outline" onclick="deleteOrchPlan(\'' + escapeHtml(p.plan_id) + '\')" style="color:#f44336;padding:0 0.5rem;font-size:0.75rem">✕</button></td></tr>';
+          });
+        el.innerHTML = '<table><thead><tr><th>名称</th><th>触发词</th><th>流程</th><th>使用次数</th><th>删除</th></tr></thead><tbody>' +
+          (rows.length ? rows.join('') : '<tr><td colspan="5" style="text-align:center;color:#94a3b8">暂无已保存计划</td></tr>') +
+          '</tbody></table>';
+      } catch(e) {}
+    }
+    async function deleteOrchPlan(planId) {
+      if (!confirm('确认删除这个编排计划？删除后无法恢复')) return;
+      try {
+        var resp = await fetch('/v1/orchestrations/' + encodeURIComponent(planId), { method: 'DELETE' });
+        var data = await resp.json();
+        if (data && data.ok) { showToast('已删除'); loadOrchPlans(); }
+        else showToast('删除失败', 'error');
+      } catch(e) { showToast('删除失败', 'error'); }
+    }
+
+    // === 初始化 ===
+    showPage(currentPage);
+    document.getElementById('btn-add-agent').addEventListener('click', function() {
+      var f = document.getElementById('add-agent-form');
+      f.hidden = !f.hidden;
+    });
+    // 设置侧边栏高亮
+    document.querySelectorAll('aside.sidebar nav a').forEach(function(a) {
+      if (a.getAttribute('onclick') && a.getAttribute('onclick').indexOf("'" + currentPage + "'") >= 0) {
+        a.classList.add('active');
+      }
+    });
+  </script>
+</body>
+</html>

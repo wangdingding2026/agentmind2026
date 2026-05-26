@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentMind 编排画布</title>
+<script src="lib/react.min.js"></script>
+<script src="lib/react-dom.min.js"></script>
+<script src="lib/xyflow.min.js"></script>
+<link rel="stylesheet" href="lib/xyflow.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f6f8;height:100vh}
+#root{width:100%;height:100%}
+#error-msg{display:none;padding:3rem 2rem;text-align:center;color:#b71c1c;font-size:1.1rem;font-weight:600}
+.app{display:flex;flex-direction:column;height:100vh}
+.tb{display:flex;justify-content:space-between;align-items:center;padding:0.5rem 1rem;background:#1e293b;color:#fff;flex-shrink:0}
+.tb h1{margin:0;font-size:1.1rem}
+.pid{font-size:0.75rem;color:#94a3b8}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.fw{flex:1;position:relative}
+.pal{flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0}
+.pal h3{margin:0;font-size:0.85rem;white-space:nowrap}
+.alist{display:flex;gap:0.3rem;overflow-x:auto;flex:1;padding:0}
+.aitem{padding:0.25rem 0.6rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;cursor:grab;font-size:0.75rem;white-space:nowrap}
+.aitem:hover{background:#e0e7ff;border-color:#60a5fa}
+.an{font-weight:600}.at{font-size:0.65rem;color:#64748b}
+.btn{display:block;width:calc(100% - 0.5rem);margin:0.25rem;padding:0.45rem;color:#fff;border:none;border-radius:6px;font-size:0.85rem;cursor:pointer;flex-shrink:0}
+.btn-run{background:#4caf50}.btn-run:disabled{background:#9e9e9e;cursor:not-allowed}
+.logs{flex:1;overflow-y:auto;padding:0.4rem;border-top:1px solid #e2e8f0;font-family:monospace;font-size:0.7rem;max-height:200px}
+.le{color:#2196f3}.lok{color:#4caf50}.lerr{color:#f44336}
+.react-flow__node{padding:3px 6px;border-radius:4px;font-size:0.55rem;min-width:40px;max-width:80px;text-align:center;border-width:1px;border-style:solid;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nd{border-color:#60a5fa;background:#fff}.nr{border-color:#2196f3;background:#e3f2fd}.nok{border-color:#4caf50;background:#e8f5e9}.ner{border-color:#f44336;background:#ffebee}
+</style>
+</head>
+<body>
+<div id="error-msg"></div>
+<div id="root"><div style="padding:3rem 2rem;color:#94a3b8;font-size:1rem;text-align:center">正在加载编排画布...</div></div>
+<script>
+
+function savePlan(p){
+  if(!p.canvasRef.current)return
+  if(!p.planName||!p.planName.trim()){alert('请填写计划名称');return}
+  if(!p.triggerWords||!p.triggerWords.trim()){alert('请填写触发词');return}
+  var steps=p.canvasRef.current.getSteps()
+  if(!steps.length){alert('画布为空，请拖入 Agent 节点并连线');return}
+  var words=p.triggerWords.split(',').map(function(w){return w.trim()}).filter(Boolean)
+  if(!words.length){alert('请填写触发词');return}
+  var body={plan_id:p.planId,name:p.planName.trim(),trigger_words:words,steps:steps}
+  fetch('/v1/orchestrations/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.ok){
+        p.addLog('已保存');
+        if(window.parent&&window.parent.loadOrchPlans)window.parent.loadOrchPlans()
+      }else{p.addLog('保存失败')}
+    }).catch(function(e){p.addLog('err: '+e.message)})
+}
+
+(function(){
+function showError(msg){var e=document.getElementById('error-msg');e.textContent=msg;e.style.display='block'}
+
+var R=window.React, RD=window.ReactDOM, RF=window.ReactFlow
+if(!R){showError('React 未加载');return}
+if(!RD){showError('ReactDOM 未加载');return}
+if(!RF||!RF.ReactFlow){showError('React Flow 未加载 — 请刷新页面重试');return}
+
+try{
+
+var h=R.createElement
+var useState=R.useState, useCallback=R.useCallback, useRef=R.useRef, useEffect=R.useEffect
+var forwardRef=R.forwardRef, useImperativeHandle=R.useImperativeHandle
+var ReactFlow=RF.ReactFlow, Controls=RF.Controls, Background=RF.Background, MiniMap=RF.MiniMap
+var useNodesState=RF.useNodesState, useEdgesState=RF.useEdgesState, addEdge=RF.addEdge, MarkerType=RF.MarkerType
+var ReactFlowProvider=RF.ReactFlowProvider
+
+var nid=0;function nn(){return'n'+(++nid)}
+var stCls={executing:'nr',completed:'nok',failed:'ner'}
+
+var Canvas=forwardRef(function Canvas(p,ref){
+  var a=useNodesState([]),nodes=a[0],setNodes=a[1],onNC=a[2]
+  var b=useEdgesState([]),edges=b[0],setEdges=b[1],onEC=b[2]
+  var c=useState(null),rfi=c[0],setRfi=c[1]
+  var rfw=useRef(null)
+
+  var onConnect=useCallback(function(conn){
+    setEdges(function(eds){return addEdge(Object.assign({},conn,{markerEnd:{type:MarkerType.ArrowClosed}}),eds)})
+  },[setEdges])
+
+  var onDragOver=useCallback(function(e){e.preventDefault();e.dataTransfer.dropEffect='move'},[])
+
+  var onDrop=useCallback(function(e){
+    e.preventDefault()
+    try{
+      var d=JSON.parse(e.dataTransfer.getData('application/json'))
+      if(!rfi)return
+      var b=rfw.current.getBoundingClientRect()
+      var pos=rfi.screenToFlowPosition({x:e.clientX-b.left,y:e.clientY-b.top})
+      setNodes(function(nds){return nds.concat([{id:nn(),position:pos,type:'default',data:{label:d.name,agentId:d.id},className:'nd'}])})
+      if(p.addLog)p.addLog('+ '+d.name)
+    }catch(ex){}
+  },[rfi,setNodes,p.addLog])
+
+  var getSteps=useCallback(function(){
+    var sm={}
+    nodes.forEach(function(n,i){sm[n.id]={step_id:i+1,agent_id:n.data.agentId,instruction:n.data.label||'任务',depends_on:[]}})
+    edges.forEach(function(e){
+      var t=sm[e.target];if(!t)return
+      var s=sm[e.source];if(s&&t.depends_on.indexOf(s.step_id)<0)t.depends_on.push(s.step_id)
+    })
+    return Object.values(sm).sort(function(a,b){return a.step_id-b.step_id})
+  },[nodes,edges])
+
+  var updateStatus=useCallback(function(sid,st){
+    setNodes(function(nds){return nds.map(function(n,i){return i+1===sid?Object.assign({},n,{className:stCls[st]||'nd'}):n})})
+  },[setNodes])
+
+  useImperativeHandle(ref,function(){return{getSteps:getSteps,updateStatus:updateStatus}},[getSteps,updateStatus])
+
+  return h('div',{ref:rfw,style:{width:'100%',height:'100%'},onDragOver:onDragOver,onDrop:onDrop},
+    h(ReactFlow,{nodes:nodes,edges:edges,onNodesChange:onNC,onEdgesChange:onEC,onConnect:onConnect,onInit:setRfi,fitView:true},
+      h(Controls,null),h(Background,null),h(MiniMap,null)))
+})
+
+function NodePalette(p){
+  var a=useState([]),agents=a[0],setAgents=a[1]
+  var loadErr=useState(false),lerr=loadErr[0],slerr=loadErr[1]
+  useEffect(function(){
+    fetch('/panel/api/agents').then(function(r){return r.json()}).then(function(d){
+      if(d&&d.agents)setAgents(d.agents.filter(function(a){return a.healthy}))
+    }).catch(function(){slerr(true)})
+  },[])
+
+  function doRun(){
+    if(!p.canvasRef.current)return
+    var steps=p.canvasRef.current.getSteps()
+    if(!steps.length){p.addLog('画布为空');return}
+    p.setExecuting(true);p.addLog('DAG '+p.planId+' '+steps.length+'步')
+
+    fetch('/v1/orchestration/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan_id:p.planId,steps:steps})})
+    .then(function(resp){
+      var reader=resp.body.getReader(),decoder=new TextDecoder(),buf=''
+      ;(function pump(){reader.read().then(function(r){
+        if(r.done){p.setExecuting(false);return}
+        buf+=decoder.decode(r.value,{stream:true})
+        var lines=buf.split('\n');buf=lines.pop()
+        lines.forEach(function(line){
+          if(line.indexOf('event:')===0||line.indexOf('data:')!==0)return
+          try{var evt=JSON.parse(line.slice(5).trim())}catch(ex){return}
+          if(evt.step_id&&evt.status){
+            p.canvasRef.current.updateStatus(evt.step_id,evt.status)
+            p.addLog('[步'+evt.step_id+'] '+evt.status+(evt.error?': '+evt.error:''))
+          }else if(evt.status==='orchestration_complete'){p.addLog('DAG完成')}
+        });pump()}).catch(function(e){p.addLog('err: '+e.message);p.setExecuting(false)})})()
+    }).catch(function(e){p.addLog('err: '+e.message);p.setExecuting(false)})
+  }
+
+  return h('aside',{className:'pal'},
+    h('div',{style:{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.3rem 0.5rem'}},
+      h('h3',null,'Agent 节点'),
+      h('div',{className:'alist'},
+        agents.length>0
+          ? agents.map(function(a){return h('div',{key:a.id,className:'aitem',draggable:true,onDragStart:function(e){e.dataTransfer.setData('application/json',JSON.stringify(a));e.dataTransfer.effectAllowed='move'}},
+              h('div',{className:'an'},a.name),h('div',{className:'at'},(a.tags||[]).join(', ')))})
+          : h('div',{style:{color:lerr?'#e53935':'#94a3b8',fontSize:'0.8rem',padding:'0.5rem'}},lerr?'加载失败':'加载Agent列表中...')
+      )
+    ),
+    h('div',{style:{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.2rem 0.5rem',borderTop:'1px solid #e2e8f0'}},
+      h('input',{placeholder:'计划名称',value:p.planName,onChange:function(e){p.setPlanName(e.target.value)},style:{width:'120px',padding:'0.25rem 0.4rem',border:'1px solid #e2e8f0',borderRadius:'4px',fontSize:'0.75rem'}}),
+      h('input',{placeholder:'触发词(逗号分隔)',value:p.triggerWords,onChange:function(e){p.setTriggerWords(e.target.value)},style:{width:'160px',padding:'0.25rem 0.4rem',border:'1px solid #e2e8f0',borderRadius:'4px',fontSize:'0.75rem'}}),
+      h('button',{onClick:function(){savePlan(p);if(parent.loadOrchPlans)parent.loadOrchPlans()},style:{padding:'0.25rem 0.5rem',background:'#4caf50',color:'#fff',border:'none',borderRadius:'4px',fontSize:'0.75rem',cursor:'pointer'}},'保存')
+    ),
+    h('div',{className:'logs'},p.logs.map(function(l,i){
+      var cls='lok';if(l.indexOf('失败')>=0||l.indexOf('err')>=0)cls='lerr';else if(l.indexOf('DAG')>=0||l.indexOf('执行')>=0)cls='le'
+      return h('div',{key:i,className:cls},l)
+    })))
+}
+
+function App(){
+  var a=useState('dag-'+crypto.randomUUID().slice(0,8)),pid=a[0]
+  var b=useState(false),ex=b[0],sx=b[1]
+  var c=useState([]),logs=c[0],sl=c[1]
+  var d=useState(''),planName=d[0],setPlanName=d[1]
+  var e=useState(''),triggerWords=e[0],setTriggerWords=e[1]
+  var cr=useRef(null)
+  var al=useCallback(function(m){sl(function(p){var n=p.slice(-200);n.push(m);return n})},[])
+
+  return h('div',{className:'app'},
+    h('header',{className:'tb'},h('h1',null,'AgentMind 编排'),h('span',{className:'pid'},'Plan: '+pid)),
+    h('div',{className:'main'},
+      h('div',{className:'fw'},h(ReactFlowProvider,null,h(Canvas,{ref:cr,addLog:al}))),
+      h(NodePalette,{canvasRef:cr,planId:pid,executing:ex,setExecuting:sx,addLog:al,logs:logs,planName:planName,setPlanName:setPlanName,triggerWords:triggerWords,setTriggerWords:setTriggerWords})))
+}
+
+var root=RD.createRoot(document.getElementById('root'))
+root.render(h(R.StrictMode,null,h(App)))
+
+}catch(e){showError('编排画布初始化失败: '+e.message);console.error(e)}
+})()
+</script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+"""RetrievalPipeline — 7 步检索流水线编排器"""
+
+import json
+import logging
+from dataclasses import dataclass, field
+
+from agentmind.memory.types import RewrittenQuery, SearchQuery, SearchResult
+
+logger = logging.getLogger("agentmind")
+
+
+@dataclass
+class RetrievalResult:
+    core_memory: str = ""
+    working_memory: list[dict] = field(default_factory=list)
+    recall_items: list[SearchResult] = field(default_factory=list)
+    rewritten_query: RewrittenQuery = field(default_factory=RewrittenQuery)
+    assembled_context: str = ""
+    assembled_context_bytes: int = 0
+    truncated: bool = False
+    steps_executed: list[str] = field(default_factory=list)
+
+
+class RetrievalPipeline:
+    """7 步检索流水线。每步 try/except 兜底，任一步失败不影响后续。"""
+
+    def __init__(self, store, memory_service: "MemoryService" = None):
+        self._store = store
+        self._service = memory_service
+
+    async def retrieve(
+        self, message: str, user_id: str, settings: dict
+    ) -> RetrievalResult:
+        mem_cfg = settings.get("memory", {})
+        steps = []
+
+        # Step 1: Core Memory
+        core_text = ""
+        try:
+            core_text = self._read_core_memory(user_id)
+            if core_text:
+                steps.append("core_memory")
+        except Exception as e:
+            logger.debug("Core Memory 读取失败: %s", e)
+
+        # Step 2: Working Memory
+        working = []
+        if self._service:
+            try:
+                limit = mem_cfg.get("working_memory_rounds", 3)
+                working = self._service.get_working_memory(user_id, limit=limit)
+                if working:
+                    steps.append("working_memory")
+            except Exception as e:
+                logger.debug("Working Memory 读取失败: %s", e)
+
+        # Step 3: Query Understanding
+        rewritten = RewrittenQuery(expanded_query=message)
+        try:
+            from agentmind.memory.pipeline.query_understanding import QueryUnderstanding
+            rewritten = await QueryUnderstanding.rewrite(message, user_id)
+            if rewritten.confidence > 0.0:
+                steps.append("query_understanding")
+        except Exception as e:
+            logger.debug("Query Understanding 失败: %s", e)
+
+        # Step 4: Multi-Route Recall
+        search_text = rewritten.expanded_query or message
+        search_query = SearchQuery(
+            query_text=search_text,
+            user_id=user_id,
+            access_levels=["shared"],
+            limit=mem_cfg.get("retrieval_max_candidates", 30),
+            time_range_start=rewritten.date_filter or "",
+            time_range_end=rewritten.date_filter or "",
+            entities=rewritten.entity_filters,
+        )
+        recall = await self._store.search(search_query)
+        steps.append("multi_route_recall")
+
+        # Step 5: Reranker (optional)
+        if mem_cfg.get("reranker_enabled", False) and recall:
+            try:
+                from agentmind.memory.pipeline.reranker import Reranker
+                reranker = Reranker()
+                recall = await reranker.rerank(search_text, recall)
+                steps.append("reranker")
+            except Exception as e:
+                logger.debug("Reranker 失败: %s", e)
+
+        # Step 6: Post-filter (date hard filter if Query Understanding extracted date)
+        if rewritten.date_filter:
+            recall = self._apply_date_filter(recall, rewritten.date_filter)
+            steps.append("post_filter")
+        else:
+            steps.append("post_filter")  # 无日期过滤也算执行了
+
+        # Step 7: Context Assembler
+        assembled_text = ""
+        assembled_bytes = 0
+        truncated = False
+        try:
+            from agentmind.memory.pipeline.assembler import ContextAssembler
+            assembler = ContextAssembler()
+            max_bytes = mem_cfg.get("context_max_bytes", 8192)
+            result = assembler.assemble(core_text, working, recall, max_bytes=max_bytes)
+            assembled_text = result.full_text
+            assembled_bytes = result.total_bytes
+            truncated = result.truncated
+            steps.append("context_assembler")
+        except Exception as e:
+            logger.debug("Context Assembler 失败: %s", e)
+
+        return RetrievalResult(
+            core_memory=core_text,
+            working_memory=working,
+            recall_items=recall,
+            rewritten_query=rewritten,
+            assembled_context=assembled_text,
+            assembled_context_bytes=assembled_bytes,
+            truncated=truncated,
+            steps_executed=steps,
+        )
+
+    def _read_core_memory(self, user_id: str) -> str:
+        conn = self._store._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT slot_key, slot_value FROM core_memory WHERE user_id=? AND status='confirmed'",
+                (user_id or "default",),
+            ).fetchall()
+            if not rows:
+                return ""
+            parts = []
+            for r in rows:
+                try:
+                    val = json.loads(r["slot_value"])
+                    content = val.get("content", "") if isinstance(val, dict) else str(val)
+                    slot = r["slot_key"]
+                    parts.append(f"[{slot}] {content[:200]}")
+                except (json.JSONDecodeError, TypeError):
+                    parts.append(r["slot_value"][:200] if r["slot_value"] else "")
+            return "\n".join(parts)
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _apply_date_filter(
+        recall: list[SearchResult], date_str: str
+    ) -> list[SearchResult]:
+        if not date_str:
+            return recall
+        return [r for r in recall if (r.entry.created_at or "").startswith(date_str)]

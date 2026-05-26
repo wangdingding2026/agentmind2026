@@ -366,15 +366,21 @@ class TestScenarioSelfReply:
 class TestScenarioTraceRecording:
     @pytest.mark.asyncio
     async def test_decision_recorded(self, monkeypatch):
-        """路由决策被记录到 memory"""
+        """路由决策被记录到 TraceService"""
         from agentmind.routing.side_effects.trace_recorder import TraceRecorder
 
-        written = {}
-        async def _fake_write(mem):
-            written["data"] = mem
+        recorded = {}
+
+        class FakeTraceService:
+            async def record_decision(self, trace_id, recorded_decision, user_id=""):
+                recorded["trace_id"] = trace_id
+                recorded["decision"] = recorded_decision
+                recorded["user_id"] = user_id
 
         monkeypatch.setattr(
-            "agentmind.routing.side_effects.trace_recorder.write_memory", _fake_write)
+            "agentmind.routing.side_effects.trace_recorder.TraceService",
+            FakeTraceService,
+        )
 
         decision = RoutingDecision(
             agent_id="a1", strategy="规则匹配: code", confidence=0.9,
@@ -382,12 +388,11 @@ class TestScenarioTraceRecording:
             context=_make_ctx(candidates=["a1", "a2"]),
         )
         await TraceRecorder.record_decision("t1", decision, "u1")
-        assert "data" in written
-        assert "routing_trace" in written["data"]["tags"]
-        content = json.loads(written["data"]["content"])
-        assert content["agent_id"] == "a1"
-        assert content["strategy"] == "规则匹配: code"
-        assert content["confidence"] == 0.9
+        assert recorded["trace_id"] == "t1"
+        assert recorded["user_id"] == "u1"
+        assert recorded["decision"].agent_id == "a1"
+        assert recorded["decision"].strategy == "规则匹配: code"
+        assert recorded["decision"].confidence == 0.9
 
 
 # ═══════════════════════════════════════════════════════════

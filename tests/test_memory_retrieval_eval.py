@@ -45,3 +45,27 @@ def test_memory_retrieval_fixture_covers_phase0_categories():
         "conflict_memory",
         "sensitive_isolation",
     } <= categories
+
+
+def test_memory_retrieval_fixture_runs_card_first_quality_gate():
+    from tests.helpers.memory_retrieval_eval_runner import run_memory_retrieval_eval
+
+    report = run_memory_retrieval_eval(FIXTURE_PATH)
+
+    assert report["total"] >= 9
+    assert report["passed"] == report["total"], report
+    assert report["hit_rate"] >= 0.8, report
+    assert not report["failures"], report
+
+
+def test_memory_retrieval_eval_reports_phase2_invariants():
+    from tests.helpers.memory_retrieval_eval_runner import run_memory_retrieval_eval
+
+    report = run_memory_retrieval_eval(FIXTURE_PATH)
+    invariants = report["invariants"]
+
+    assert invariants["card_first_hits"] >= 4
+    assert invariants["raw_expansion_checked"] is True
+    assert invariants["result_pagination_checked"] is True
+    assert invariants["conflict_notice_checked"] is True
+    assert invariants["sensitive_shared_isolation_checked"] is True

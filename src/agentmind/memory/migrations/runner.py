@@ -69,6 +69,89 @@ def migrate_v1_to_v2(db_path: str) -> bool:
         conn.close()
 
 
+def ensure_memory_layer_tables(db_path: str):
+    """确保 Phase 2 分层记忆表存在。幂等，可在每次启动时调用。"""
+    conn = sqlite3.connect(db_path, timeout=10)
+    conn.execute("PRAGMA busy_timeout = 5000")
+    try:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS raw_memory (
+                memory_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL,
+                source_agent TEXT NOT NULL DEFAULT '',
+                source_task_id TEXT NOT NULL DEFAULT '',
+                memory_type TEXT NOT NULL DEFAULT 'episodic',
+                conversation_id TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS memory_cards (
+                memory_id TEXT PRIMARY KEY,
+                raw_memory_id TEXT NOT NULL,
+                user_id TEXT NOT NULL DEFAULT '',
+                summary TEXT NOT NULL DEFAULT '',
+                source_agent TEXT NOT NULL DEFAULT '',
+                source_task_id TEXT NOT NULL DEFAULT '',
+                memory_type TEXT NOT NULL DEFAULT 'episodic',
+                conversation_id TEXT NOT NULL DEFAULT '',
+                importance REAL NOT NULL DEFAULT 0.5,
+                tags TEXT NOT NULL DEFAULT '[]',
+                access_level TEXT NOT NULL DEFAULT 'shared',
+                card_text TEXT NOT NULL DEFAULT '',
+                source_refs TEXT NOT NULL DEFAULT '{}',
+                score_metadata TEXT NOT NULL DEFAULT '{}',
+                session_id TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                started_at TEXT NOT NULL DEFAULT '',
+                ended_at TEXT NOT NULL DEFAULT '',
+                summary TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS result_sets (
+                result_set_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT '',
+                query_text TEXT NOT NULL DEFAULT '',
+                memory_ids TEXT NOT NULL DEFAULT '[]',
+                cursor INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT '',
+                expires_at TEXT NOT NULL DEFAULT '',
+                metadata TEXT NOT NULL DEFAULT '{}'
+            );
+        """)
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_raw_memory_user_created ON raw_memory(user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_raw_memory_task ON raw_memory(source_task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_cards_user_created ON memory_cards(user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_cards_raw ON memory_cards(raw_memory_id)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_cards_conversation ON memory_cards(conversation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_cards_session ON memory_cards(session_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_memory_cards_type_importance ON memory_cards(memory_type, importance DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON sessions(user_id, status)",
+            "CREATE INDEX IF NOT EXISTS idx_result_sets_user_created ON result_sets(user_id, created_at DESC)",
+        ]
+        _add_columns(conn, "memory_cards", [
+            ("card_text", "TEXT NOT NULL DEFAULT ''"),
+            ("source_refs", "TEXT NOT NULL DEFAULT '{}'"),
+            ("score_metadata", "TEXT NOT NULL DEFAULT '{}'"),
+            ("session_id", "TEXT NOT NULL DEFAULT ''"),
+        ])
+        for sql in indexes:
+            conn.execute(sql)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _get_version(conn) -> int:
     try:
         row = conn.execute(

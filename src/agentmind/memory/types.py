@@ -125,6 +125,7 @@ class SearchQuery:
     offset: int = 0
     time_range_start: str = ""
     time_range_end: str = ""
+    exclude_conversation_id: str = ""
     entities: list[str] = field(default_factory=list)
 
 

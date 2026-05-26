@@ -686,6 +686,9 @@ def _get_memory_stats_sync() -> dict:
 
 
 async def get_memory_stats() -> dict:
+    if _use_v4_memory_store():
+        from agentmind.memory.service import MemoryService
+        return await MemoryService().get_memory_stats()
     return await asyncio.to_thread(_get_memory_stats_sync)
 
 
@@ -738,4 +741,7 @@ def _cleanup_memory_sync(retention_days: int = 30) -> int:
 
 async def cleanup_memory(retention_days: int = 30) -> int:
     """清理超过 retention_days 天的记忆，返回删除数"""
+    if _use_v4_memory_store():
+        from agentmind.memory.service import MemoryService
+        return await MemoryService().cleanup_memory(retention_days=retention_days)
     return await asyncio.to_thread(_cleanup_memory_sync, retention_days)

@@ -406,42 +406,26 @@ class TestTraceRecorder:
         )
         decision.context.candidates = ["a1", "a2"]
 
-        recorded = {}
-        async def _fake_write(mem):
-            recorded["written"] = mem
+        class FakeTraceService:
+            async def record_decision(self, trace_id, recorded_decision, user_id=""):
+                assert trace_id == "t1"
+                assert recorded_decision is decision
+                assert user_id == "u1"
 
-        monkeypatch.setattr("agentmind.routing.side_effects.trace_recorder.write_memory", _fake_write)
-
-        await TraceRecorder.record_decision("t1", decision, "u1")
-        assert "written" in recorded
-        assert "routing_trace" in recorded["written"]["tags"]
-
-        # get_trace 现在直查 SQLite，mock _get_memory_conn 绕过
-        import sqlite3
-        db = sqlite3.connect(":memory:")
-        db.row_factory = sqlite3.Row
-        db.execute(
-            """CREATE TABLE memory_entries
-               (memory_id TEXT, content TEXT, summary TEXT, source_agent TEXT,
-                source_task_id TEXT, user_id TEXT, tags TEXT, access_level TEXT)"""
-        )
-        db.execute(
-            "INSERT INTO memory_entries (memory_id, summary) VALUES (?, ?)",
-            ("trace-t1", "[explicit] → a1 (conf=0.85)"),
-        )
-        db.commit()
-
-        def _fake_get_conn():
-            return db
+            async def get_trace(self, trace_id):
+                assert trace_id == "t1"
+                return {"trace_id": trace_id, "summary": "[explicit] -> a1 (conf=0.85)"}
 
         monkeypatch.setattr(
-            "agentmind.storage.memory._get_memory_conn",
-            _fake_get_conn,
+            "agentmind.routing.side_effects.trace_recorder.TraceService",
+            FakeTraceService,
         )
 
+        await TraceRecorder.record_decision("t1", decision, "u1")
         trace = await TraceRecorder.get_trace("t1")
+
         assert trace is not None
-        assert "[explicit] → a1" in trace["summary"]
+        assert "[explicit] -> a1" in trace["summary"]
 
 
 # ── SensitiveScanner ──

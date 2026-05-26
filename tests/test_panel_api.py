@@ -264,6 +264,27 @@ class TestMemory:
             finally:
                 mp.undo()
 
+    def test_panel_memory_delete_uses_memory_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeMemoryService:
+                async def delete_memory(self, memory_id):
+                    calls.append(memory_id)
+                    return True
+
+            mp.setattr("agentmind.panel.server.MemoryService", FakeMemoryService, raising=False)
+            try:
+                resp = client.delete("/panel/api/memory/m-panel-delete")
+                assert resp.status_code == 200
+                assert resp.json()["ok"] is True
+                assert calls == ["m-panel-delete"]
+            finally:
+                mp.undo()
+
     def test_cleanup(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

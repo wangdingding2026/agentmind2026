@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-from agentmind.memory.types import RewrittenQuery, SearchQuery, SearchResult
+from agentmind.memory.types import MemoryEntry, RewrittenQuery, SearchQuery, SearchResult
 
 logger = logging.getLogger("agentmind")
 
@@ -73,9 +73,10 @@ class RetrievalPipeline:
             limit=mem_cfg.get("retrieval_max_candidates", 30),
             time_range_start=rewritten.date_filter or "",
             time_range_end=rewritten.date_filter or "",
+            exclude_conversation_id=self._active_conversation_id(user_id) if working else "",
             entities=rewritten.entity_filters,
         )
-        recall = await self._store.search(search_query)
+        recall = await self._recall(search_text, user_id, search_query)
         steps.append("multi_route_recall")
 
         # Step 5: Reranker (optional)
@@ -120,6 +121,37 @@ class RetrievalPipeline:
             assembled_context_bytes=assembled_bytes,
             truncated=truncated,
             steps_executed=steps,
+        )
+
+    async def _recall(
+        self, search_text: str, user_id: str, search_query: SearchQuery
+    ) -> list[SearchResult]:
+        if self._service:
+            rows = await self._service.search_memory(
+                query=search_text,
+                user_id=user_id,
+                access_levels=search_query.access_levels,
+                exclude_conversation_id=search_query.exclude_conversation_id,
+                limit=search_query.limit,
+            )
+            return [self._dict_to_search_result(row) for row in rows]
+        return await self._store.search(search_query)
+
+    def _active_conversation_id(self, user_id: str) -> str:
+        if not self._service:
+            return ""
+        try:
+            return self._service.get_active_conversation_id(user_id) or ""
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _dict_to_search_result(row: dict) -> SearchResult:
+        entry = MemoryEntry.from_dict(row)
+        return SearchResult(
+            entry=entry,
+            score=float(row.get("_score") or 0.0),
+            route=row.get("_route", ""),
         )
 
     def _read_core_memory(self, user_id: str) -> str:

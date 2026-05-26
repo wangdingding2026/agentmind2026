@@ -7,8 +7,9 @@ from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
 from agentmind.services.config_service import ConfigService
+from agentmind.memory.service import MemoryService
+from agentmind.services.trace_service import TraceService
 from agentmind.storage.db import CONFIG_DIR, get_metrics, get_task_detail, get_task_stats, get_recent_errors, query_tasks
-from agentmind.storage.memory import get_memory_stats, search_memory, cleanup_memory
 
 def _mask_config(config: dict) -> dict:
     """脱敏敏感配置字段，只返回 masked 值"""
@@ -47,8 +48,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/routing/trace/{trace_id}")
     async def routing_trace(trace_id: str):
-        from agentmind.routing.side_effects.trace_recorder import TraceRecorder
-        trace = await TraceRecorder.get_trace(trace_id)
+        trace = await TraceService().get_trace(trace_id)
         if trace is None:
             raise HTTPException(status_code=404, detail="Trace not found")
         return trace
@@ -185,28 +185,20 @@ def create_panel_router() -> APIRouter:
     @router.get("/memory/search")
     async def memory_search(q: str = "", source_agent: str = None, tags: str = None, user_id: str = None, limit: int = 10):
         tag_list = [t.strip() for t in tags.split(",")] if tags else None
-        rows = await search_memory(query=q, source_agent=source_agent, tags=tag_list, user_id=user_id, limit=limit)
+        rows = await MemoryService().search_memory(query=q, source_agent=source_agent, tags=tag_list, user_id=user_id, limit=limit)
         return {"memories": rows}
 
     @router.get("/memory/stats")
     async def memory_stats():
-        return await get_memory_stats()
+        return await MemoryService().get_memory_stats()
 
     @router.delete("/memory/{memory_id}")
     async def memory_delete(memory_id: str):
-        conn = __import__("agentmind.storage.memory", fromlist=["_get_memory_conn"])._get_memory_conn()
-        conn.execute("DELETE FROM memory_entries WHERE memory_id=?", (memory_id,))
-        try:
-            conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (memory_id,))
-        except Exception:
-            pass
-        conn.commit()
-        conn.close()
-        return {"ok": True}
+        return {"ok": await MemoryService().delete_memory(memory_id)}
 
     @router.post("/memory/cleanup")
     async def memory_cleanup(retention_days: int = 30):
-        deleted = await cleanup_memory(retention_days=retention_days)
+        deleted = await MemoryService().cleanup_memory(retention_days=retention_days)
         return {"deleted": deleted}
 
     # === v2.0 可观测性 ===

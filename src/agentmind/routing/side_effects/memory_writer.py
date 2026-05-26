@@ -1,6 +1,6 @@
 import logging
 
-from agentmind.storage.memory import write_memory
+from agentmind.memory.service import MemoryService
 
 logger = logging.getLogger("agentmind")
 
@@ -23,34 +23,21 @@ class MemoryWriter:
             if user_id:
                 tags.append(f"user:{user_id}")
 
-            if _use_v4():
-                from agentmind.memory.service import MemoryService
-                svc = MemoryService()
-                await svc.write_memory({
-                    "memory_id": f"task-{trace_id}",
-                    "content": user_message,
-                    "summary": f"[{agent_id}] {summary}",
-                    "source_agent": agent_id,
-                    "source_task_id": trace_id,
-                    "tags": tags,
-                }, user_id=user_id)
-            else:
-                await write_memory({
-                    "memory_id": f"task-{trace_id}",
-                    "content": user_message,
-                    "summary": f"[{agent_id}] {summary}",
-                    "source_agent": agent_id,
-                    "source_task_id": trace_id,
-                    "tags": tags,
-                    "user_id": user_id,
-                })
+            await MemoryService().write_memory({
+                "memory_id": f"task-{trace_id}",
+                "content": user_message,
+                "summary": f"[{agent_id}] {summary}",
+                "source_agent": agent_id,
+                "source_task_id": trace_id,
+                "tags": tags,
+                "user_id": user_id,
+            }, user_id=user_id)
         except Exception:
             pass
 
         # 记录到 Working Memory
         if user_id:
             try:
-                from agentmind.memory.service import MemoryService
                 svc = MemoryService()
                 svc.add_to_working_memory(user_id, "user", user_message)
                 svc.add_to_working_memory(user_id, "assistant", result or "")
@@ -94,25 +81,8 @@ class MemoryWriter:
                         "tags": ["fact", f"type:{fact_type}", f"user:{user_id}"] if user_id else ["fact", f"type:{fact_type}"],
                         "user_id": user_id,
                     }
-                    if _use_v4():
-                        from agentmind.memory.service import MemoryService
-                        await MemoryService().write_memory(fact_entry, user_id=user_id)
-                    else:
-                        await write_memory(fact_entry)
+                    await MemoryService().write_memory(fact_entry, user_id=user_id)
                 except Exception:
                     pass
         except Exception:
             pass
-
-
-def _use_v4() -> bool:
-    try:
-        import yaml
-        from agentmind.storage.db import CONFIG_DIR
-        path = CONFIG_DIR / "settings.yaml"
-        if not path.exists():
-            return False
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        return bool(data.get("memory", {}).get("v4_write_enabled", False))
-    except Exception:
-        return False

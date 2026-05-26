@@ -1,6 +1,6 @@
 import re
 
-from agentmind.storage.memory import search_memory
+from agentmind.memory.service import MemoryService
 
 
 class MemoryRetriever:
@@ -9,11 +9,16 @@ class MemoryRetriever:
         if not user_id:
             return []
 
+        svc = MemoryService()
+
+        followup = await _retrieve_result_set_followup(svc, message, user_id, limit)
+        if followup is not None:
+            return followup
+
         # v4 检索开关
         if _use_v4_retrieval():
             try:
-                from agentmind.memory.service import MemoryService
-                result = await MemoryService().retrieve(message, user_id)
+                result = await svc.retrieve(message, user_id)
                 items = result.get("recall_items", [])
                 # 兼容旧格式：将 assembled_context 注入到结果中
                 if result.get("assembled_context"):
@@ -25,13 +30,13 @@ class MemoryRetriever:
         # 尝试从消息中提取日期（如 5月22日、5-22、2026-05-22）
         date_filter = _extract_date(message)
 
-        recent = await search_memory(
+        recent = await svc.search_memory(
             query="", user_id=user_id, access_levels=["shared"], limit=10,
         )
 
         keyword = []
         if len(message.strip()) > 3:
-            keyword = await search_memory(
+            keyword = await svc.search_memory(
                 query=message, user_id=user_id, access_levels=["shared"], limit=20,
             )
 
@@ -44,7 +49,7 @@ class MemoryRetriever:
 
         # 如果提取到了日期，显式查询该日期的记忆（FTS5 中文检索不精准的补偿）
         if date_filter:
-            date_entries = await search_memory(
+            date_entries = await svc.search_memory(
                 query="", user_id=user_id, access_levels=["shared"], limit=100,
             )
             date_matches = [
@@ -57,6 +62,40 @@ class MemoryRetriever:
                 merged.insert(0, m)  # 插到最前面
 
         return merged[:limit * 3]
+
+
+async def _retrieve_result_set_followup(
+    svc: MemoryService, message: str, user_id: str, limit: int
+) -> list[dict] | None:
+    expand_index = _extract_expand_index(message)
+    if expand_index is not None:
+        expanded = await svc.expand_result(expand_index, user_id=user_id)
+        return [expanded] if expanded else []
+
+    if _is_more_results_query(message):
+        page = await svc.more_results(user_id=user_id, page_size=limit)
+        if not page:
+            return []
+        items = page.get("items", [])
+        for item in items:
+            item["_route"] = page.get("_route", "result_set_more")
+        return items
+
+    return None
+
+
+def _extract_expand_index(message: str) -> int | None:
+    match = re.search(r"展开\s*第\s*(\d+)\s*(条|个)?", message)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_more_results_query(message: str) -> bool:
+    return bool(re.search(r"还有(别的|其他)?吗|还有别的吗|更多", message))
 
 
 def _use_v4_retrieval() -> bool:

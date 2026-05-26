@@ -168,8 +168,9 @@ def initialize_memory_db():
 
     # v4 迁移：尝试将 schema 从 v1 升级到 v2
     try:
-        from agentmind.memory.migrations.runner import migrate_v1_to_v2
+        from agentmind.memory.migrations.runner import ensure_memory_layer_tables, migrate_v1_to_v2
         migrate_v1_to_v2(str(DATA_DIR / "memory.db"))
+        ensure_memory_layer_tables(str(DATA_DIR / "memory.db"))
     except Exception as e:
         logger.debug("v4 迁移跳过: %s", e)
 

@@ -9,8 +9,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from agentmind.storage.db import CONFIG_DIR
-
-from agentmind.storage.memory import write_memory
+from agentmind.memory.service import MemoryService
 
 logger = logging.getLogger("agentmind")
 router = APIRouter()
@@ -102,7 +101,7 @@ def build_contextual_instruction(step: OrchestrationStep, previous_results: dict
 
 async def _write_step_memory(step: OrchestrationStep, plan_id: str, result: str):
     try:
-        await write_memory({
+        await MemoryService().write_memory({
             "memory_id": f"dag-{plan_id}-step{step.step_id}",
             "content": result,
             "summary": f"[DAG:{plan_id}/step{step.step_id}] {result[:200]}",

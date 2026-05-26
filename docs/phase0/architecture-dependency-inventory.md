@@ -173,3 +173,20 @@ Migration rule:
 4. Change old task functions to delegate to `TaskService` without changing
    callers.
 5. Only then begin `main.py` and `RoutingService` extraction.
+
+## Phase 1 Package 1 Status
+
+Completed:
+
+- `ConfigService` added and used for config reads, writes, and masking.
+- `TaskService` added and used as the compatibility layer behind
+  `storage.db` task lifecycle functions.
+- Panel settings, Feishu config, route rules, and embedding status now use
+  `ConfigService`.
+
+Still deferred to later Phase 1 packages:
+
+- `main.py` startup slimming.
+- `RoutingService` extraction from `api/router.py`.
+- Agent registry management service extraction.
+- Any memory-service or trace-service split.

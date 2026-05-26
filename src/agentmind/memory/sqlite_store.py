@@ -1,8 +1,10 @@
 """SQLite 实现 IMemoryStore 接口 — v4 记忆存储"""
 
 import asyncio
+import gzip
 import json
 import logging
+import re
 import sqlite3
 import struct
 from datetime import datetime, timezone
@@ -38,7 +40,11 @@ class SqliteMemoryStore(IMemoryStore):
     """SQLite 实现 IMemoryStore。"""
 
     def __init__(self, db_path: str = ""):
-        self._db_path = db_path or str(DATA_DIR / "memory.db")
+        if db_path:
+            self._db_path = db_path
+        else:
+            from agentmind.storage import db as storage_db
+            self._db_path = str(storage_db.DATA_DIR / "memory.db")
 
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path, timeout=10)
@@ -98,6 +104,8 @@ class SqliteMemoryStore(IMemoryStore):
                 )
             except Exception:
                 pass
+
+            self._upsert_memory_layers(conn, entry, tags_json, now)
 
             conn.commit()
             return entry.memory_id
@@ -174,6 +182,7 @@ class SqliteMemoryStore(IMemoryStore):
                         )
                     except Exception:
                         pass
+                    self._upsert_memory_layers(conn, entry, tags_json, now)
                     ids.append(entry.memory_id)
                 except Exception:
                     pass
@@ -182,10 +191,88 @@ class SqliteMemoryStore(IMemoryStore):
         finally:
             conn.close()
 
+    def _upsert_memory_layers(self, conn, entry: MemoryEntry, tags_json: str, now: str):
+        """Best-effort dual-write for Phase 2 memory layer tables."""
+        metadata = json.dumps({
+            "version": entry.version,
+            "access_level": entry.access_level,
+            "content_hash": entry.content_hash,
+            "parent_id": entry.parent_id,
+        }, ensure_ascii=False)
+        card_text = (
+            f"{entry.summary}\n\n{entry.content}"
+            if entry.summary
+            else entry.content
+        )
+        source_refs = json.dumps({
+            "raw_memory_id": entry.memory_id,
+            "source_agent": entry.source_agent,
+            "source_task_id": entry.source_task_id,
+            "parent_id": entry.parent_id,
+        }, ensure_ascii=False)
+        score_metadata = json.dumps({
+            "importance": entry.importance,
+            "memory_type": entry.memory_type.value,
+            "content_hash": entry.content_hash,
+            "access_level": entry.access_level,
+        }, ensure_ascii=False)
+        conn.execute(
+            """INSERT OR REPLACE INTO raw_memory
+               (memory_id, user_id, content, source_agent, source_task_id,
+                memory_type, conversation_id, created_at, metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                entry.memory_id,
+                entry.user_id,
+                entry.content,
+                entry.source_agent,
+                entry.source_task_id,
+                entry.memory_type.value,
+                entry.conversation_id,
+                entry.created_at or now,
+                metadata,
+            ),
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO memory_cards
+               (memory_id, raw_memory_id, user_id, summary, source_agent, source_task_id,
+                memory_type, conversation_id, importance, tags, access_level,
+                card_text, source_refs, score_metadata, session_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                entry.memory_id,
+                entry.memory_id,
+                entry.user_id,
+                entry.summary,
+                entry.source_agent,
+                entry.source_task_id,
+                entry.memory_type.value,
+                entry.conversation_id,
+                entry.importance,
+                tags_json,
+                entry.access_level,
+                card_text,
+                source_refs,
+                score_metadata,
+                entry.conversation_id,
+                entry.created_at or now,
+                now,
+            ),
+        )
+
     # ── 检索 ──
 
     async def search(self, query: SearchQuery) -> list[SearchResult]:
         return await asyncio.to_thread(self._search_sync, query)
+
+    async def search_memory_cards(self, query: SearchQuery) -> list[dict]:
+        return await asyncio.to_thread(self._search_memory_cards_sync, query)
+
+    async def search_archive_memory(self, query: SearchQuery) -> list[dict]:
+        return await asyncio.to_thread(self._search_archive_memory_sync, query)
+
+    async def get_archived_memory(self, memory_id: str, user_id: str = "") -> dict | None:
+        return await asyncio.to_thread(self._get_archived_memory_sync, memory_id, user_id)
 
     def _search_sync(self, query: SearchQuery) -> list[SearchResult]:
         conn = self._get_conn()
@@ -227,6 +314,250 @@ class SqliteMemoryStore(IMemoryStore):
         finally:
             conn.close()
 
+    def _search_memory_cards_sync(self, query: SearchQuery) -> list[dict]:
+        conn = self._get_conn()
+        try:
+            filter_clause, filter_params = self._build_card_filter_clause(query)
+            params = []
+            if query.query_text:
+                text_clauses = []
+                for term in self._card_query_terms(query.query_text):
+                    text_clauses.append("(card_text LIKE ? OR summary LIKE ?)")
+                    like = f"%{term}%"
+                    params.extend([like, like])
+                where = f"WHERE ({' OR '.join(text_clauses)}){filter_clause}"
+            else:
+                where = f"WHERE 1=1{filter_clause}" if filter_clause else ""
+            sql = f"""SELECT * FROM memory_cards
+                   {where}
+                   ORDER BY created_at DESC, memory_id ASC
+                   LIMIT ? OFFSET ?"""
+            params.extend(filter_params)
+            params.extend([query.limit * 3, query.offset])
+            rows = conn.execute(sql, params).fetchall()
+            cards = [self._row_to_memory_card(r) for r in rows]
+            for card in cards:
+                card["_score"] = self._score_memory_card(card, query)
+                card["_route"] = "memory_cards"
+            cards.sort(
+                key=lambda item: (
+                    -item["_score"],
+                    item.get("memory_id", ""),
+                )
+            )
+            return cards[:query.limit]
+        finally:
+            conn.close()
+
+    def _archive_db_path(self) -> str:
+        return self._db_path.replace("memory.db", "archive.db")
+
+    def _get_archive_conn(self) -> sqlite3.Connection | None:
+        archive_path = self._archive_db_path()
+        try:
+            conn = sqlite3.connect(archive_path, timeout=10)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 5000")
+            return conn
+        except sqlite3.Error:
+            return None
+
+    def _search_archive_memory_sync(self, query: SearchQuery) -> list[dict]:
+        if not query.user_id:
+            return []
+        conn = self._get_archive_conn()
+        if conn is None:
+            return []
+        try:
+            rows = []
+            for table_name in self._archive_table_names(conn):
+                table_rows = self._search_archive_table(conn, table_name, query)
+                rows.extend(table_rows)
+            rows.sort(
+                key=lambda item: (
+                    item.get("original_created_at", ""),
+                    item.get("memory_id", ""),
+                ),
+                reverse=True,
+            )
+            return rows[:query.limit]
+        finally:
+            conn.close()
+
+    def _get_archived_memory_sync(self, memory_id: str, user_id: str = "") -> dict | None:
+        if not memory_id or not user_id:
+            return None
+        conn = self._get_archive_conn()
+        if conn is None:
+            return None
+        try:
+            for table_name in self._archive_table_names(conn):
+                row = conn.execute(
+                    f"SELECT * FROM {table_name} WHERE memory_id=? AND user_id=? LIMIT 1",
+                    (memory_id, user_id),
+                ).fetchone()
+                if row is not None:
+                    return self._row_to_archive_memory(row, table_name)
+            return None
+        finally:
+            conn.close()
+
+    def _archive_table_names(self, conn) -> list[str]:
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'archive_%'"
+        ).fetchall()
+        return [r["name"] for r in rows if re.match(r"^archive_[A-Za-z0-9_]+$", r["name"])]
+
+    def _search_archive_table(self, conn, table_name: str, query: SearchQuery) -> list[dict]:
+        where = ["1=1"]
+        params = []
+        if query.user_id:
+            where.append("user_id = ?")
+            params.append(query.user_id)
+        if query.memory_types:
+            type_values = [mt.value for mt in query.memory_types]
+            placeholders = ",".join("?" for _ in type_values)
+            where.append(f"memory_type IN ({placeholders})")
+            params.extend(type_values)
+        if query.time_range_start:
+            where.append("original_created_at >= ?")
+            params.append(query.time_range_start)
+        if query.time_range_end:
+            where.append("original_created_at <= ?")
+            params.append(query.time_range_end)
+        sql = f"""SELECT * FROM {table_name}
+               WHERE {' AND '.join(where)}
+               ORDER BY original_created_at DESC, memory_id ASC
+               LIMIT ?"""
+        rows = conn.execute(sql, params + [query.limit * 3]).fetchall()
+        archive_rows = [self._row_to_archive_memory(r, table_name) for r in rows]
+        if query.query_text:
+            terms = self._card_query_terms(query.query_text)
+            archive_rows = [
+                row for row in archive_rows
+                if any(term in (row.get("summary", "") + "\n" + row.get("content", "")) for term in terms)
+            ]
+        return archive_rows
+
+    def _row_to_archive_memory(self, row, table_name: str) -> dict:
+        d = dict(row)
+        compressed = d.pop("content_compressed", b"")
+        try:
+            content = gzip.decompress(compressed).decode("utf-8")
+        except Exception:
+            content = ""
+        d["content"] = content
+        d["archive_table"] = table_name
+        d["created_at"] = d.get("original_created_at", "")
+        d["_route"] = "archive"
+        return d
+
+    def _card_query_terms(self, query_text: str) -> list[str]:
+        text = query_text.strip()
+        if not text:
+            return []
+
+        terms = [text]
+        terms.extend(re.findall(r"[A-Za-z0-9_./:-]+", text))
+        terms.extend(re.findall(r"[\u4e00-\u9fff]{2,}", text))
+
+        cjk_only = "".join(re.findall(r"[\u4e00-\u9fff]", text))
+        for width in (4, 3, 2):
+            for i in range(max(0, len(cjk_only) - width + 1)):
+                terms.append(cjk_only[i:i + width])
+
+        return [term for term in dict.fromkeys(terms) if term]
+
+    def _build_card_filter_clause(self, query: SearchQuery) -> tuple[str, list]:
+        conditions = []
+        params = []
+
+        if query.user_id:
+            conditions.append("user_id = ?")
+            params.append(query.user_id)
+
+        if query.access_levels:
+            placeholders = ",".join("?" for _ in query.access_levels)
+            conditions.append(f"access_level IN ({placeholders})")
+            params.extend(query.access_levels)
+
+        if query.memory_types:
+            type_values = [mt.value for mt in query.memory_types]
+            placeholders = ",".join("?" for _ in type_values)
+            conditions.append(f"memory_type IN ({placeholders})")
+            params.extend(type_values)
+
+        if query.tags:
+            tag_clauses = []
+            for tag in query.tags:
+                tag_clauses.append("tags LIKE ?")
+                params.append(f"%{tag}%")
+            conditions.append(f"({' OR '.join(tag_clauses)})")
+
+        if query.conversation_id:
+            conditions.append("(conversation_id = ? OR session_id = ?)")
+            params.extend([query.conversation_id, query.conversation_id])
+
+        if query.exclude_conversation_id:
+            conditions.append("(conversation_id != ? AND session_id != ?)")
+            params.extend([query.exclude_conversation_id, query.exclude_conversation_id])
+
+        if query.time_range_start:
+            conditions.append("created_at >= ?")
+            params.append(query.time_range_start)
+        if query.time_range_end:
+            conditions.append("created_at <= ?")
+            params.append(query.time_range_end)
+
+        clause = (" AND " + " AND ".join(conditions)) if conditions else ""
+        return clause, params
+
+    def _row_to_memory_card(self, row) -> dict:
+        d = dict(row)
+        try:
+            d["tags"] = json.loads(d.get("tags") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            d["tags"] = []
+        try:
+            d["source_refs"] = json.loads(d.get("source_refs") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            d["source_refs"] = {}
+        try:
+            d["score_metadata"] = json.loads(d.get("score_metadata") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            d["score_metadata"] = {}
+        return d
+
+    def _score_memory_card(self, card: dict, query: SearchQuery) -> float:
+        score = 0.0
+        text = query.query_text.strip().lower()
+        summary = (card.get("summary") or "").lower()
+        card_text = (card.get("card_text") or "").lower()
+
+        if text:
+            for term in self._card_query_terms(query.query_text):
+                lowered = term.lower()
+                if lowered in summary:
+                    score += 1.0
+                elif lowered in card_text:
+                    score += 0.7
+        else:
+            score += 0.1
+
+        try:
+            score += 0.5 * float(card.get("importance") or 0.0)
+        except (TypeError, ValueError):
+            pass
+        score += self._card_recency_tiebreaker(card.get("created_at", ""))
+        return score
+
+    def _card_recency_tiebreaker(self, created_at: str) -> float:
+        try:
+            date_part = created_at[:10].replace("-", "")
+            return int(date_part) / 100_000_000_000
+        except (TypeError, ValueError):
+            return 0.0
+
     def _build_filter_clause(self, query: SearchQuery) -> tuple[str, list]:
         """构建用户/权限/类型/时间/标签过滤条件。返回 (sql_clause, params)。"""
         conditions = []
@@ -264,6 +595,10 @@ class SqliteMemoryStore(IMemoryStore):
         if query.conversation_id:
             conditions.append("conversation_id = ?")
             params.append(query.conversation_id)
+
+        if query.exclude_conversation_id:
+            conditions.append("conversation_id != ?")
+            params.append(query.exclude_conversation_id)
 
         clause = (" AND " + " AND ".join(conditions)) if conditions else ""
         return clause, params
@@ -572,6 +907,9 @@ class SqliteMemoryStore(IMemoryStore):
     async def delete(self, memory_id: str) -> bool:
         return await asyncio.to_thread(self._delete_sync, memory_id)
 
+    async def cleanup_memory(self, retention_days: int = 30) -> int:
+        return await asyncio.to_thread(self._cleanup_memory_sync, retention_days)
+
     def _delete_sync(self, memory_id: str) -> bool:
         conn = self._get_conn()
         try:
@@ -580,13 +918,59 @@ class SqliteMemoryStore(IMemoryStore):
                 conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (memory_id,))
             except Exception:
                 pass
+            try:
+                conn.execute("DELETE FROM raw_memory WHERE memory_id=?", (memory_id,))
+                conn.execute("DELETE FROM memory_cards WHERE memory_id=? OR raw_memory_id=?", (memory_id, memory_id))
+            except Exception:
+                pass
             if is_vec_available():
                 try:
-                    conn.execute("DELETE FROM vec_memory WHERE memory_id=?", (memory_id,))
+                    vec_tables = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'vec_memory%'"
+                    ).fetchall()
+                    for row in vec_tables:
+                        conn.execute(f"DELETE FROM {row['name']} WHERE memory_id=?", (memory_id,))
                 except Exception:
                     pass
             conn.commit()
             return True
+        finally:
+            conn.close()
+
+    def _cleanup_memory_sync(self, retention_days: int = 30) -> int:
+        conn = self._get_conn()
+        try:
+            now = _now_sqlite()
+            rows = conn.execute(
+                "SELECT memory_id FROM memory_entries WHERE created_at <= datetime(?, ?)",
+                (now, f"-{retention_days} days"),
+            ).fetchall()
+            if not rows:
+                return 0
+
+            ids = [r["memory_id"] for r in rows]
+            for mid in ids:
+                conn.execute("DELETE FROM memory_entries WHERE memory_id=?", (mid,))
+                try:
+                    conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (mid,))
+                except Exception:
+                    pass
+                try:
+                    conn.execute("DELETE FROM raw_memory WHERE memory_id=?", (mid,))
+                    conn.execute("DELETE FROM memory_cards WHERE memory_id=? OR raw_memory_id=?", (mid, mid))
+                except Exception:
+                    pass
+                if is_vec_available():
+                    try:
+                        vec_tables = conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'vec_memory%'"
+                        ).fetchall()
+                        for row in vec_tables:
+                            conn.execute(f"DELETE FROM {row['name']} WHERE memory_id=?", (mid,))
+                    except Exception:
+                        pass
+            conn.commit()
+            return len(ids)
         finally:
             conn.close()
 
@@ -605,6 +989,56 @@ class SqliteMemoryStore(IMemoryStore):
                 return None
             result = self._row_to_result(row, route="direct")
             return result.entry
+        finally:
+            conn.close()
+
+    async def get_raw_memory(self, memory_id: str) -> dict | None:
+        return await asyncio.to_thread(self._get_raw_memory_sync, memory_id)
+
+    def _get_raw_memory_sync(self, memory_id: str) -> dict | None:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM raw_memory WHERE memory_id=?",
+                (memory_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            d = dict(row)
+            try:
+                d["metadata"] = json.loads(d.get("metadata") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                d["metadata"] = {}
+            return d
+        finally:
+            conn.close()
+
+    async def get_memory_card(self, memory_id: str) -> dict | None:
+        return await asyncio.to_thread(self._get_memory_card_sync, memory_id)
+
+    def _get_memory_card_sync(self, memory_id: str) -> dict | None:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM memory_cards WHERE memory_id=?",
+                (memory_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            d = dict(row)
+            try:
+                d["tags"] = json.loads(d.get("tags") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                d["tags"] = []
+            try:
+                d["source_refs"] = json.loads(d.get("source_refs") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                d["source_refs"] = {}
+            try:
+                d["score_metadata"] = json.loads(d.get("score_metadata") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                d["score_metadata"] = {}
+            return d
         finally:
             conn.close()
 

@@ -9,6 +9,11 @@ import pytest
 from agentmind.agents.base import AgentCapability, StreamEvent, StreamEventType, TaskResult
 
 
+class FakeDiscussionMemoryService:
+    async def write_memory(self, entry, generate_embedding=True, user_id=""):
+        return 1
+
+
 # ═══════════════════════════════════════
 # 1. _parse_discussion 讨论消息解析
 # ═══════════════════════════════════════
@@ -277,7 +282,7 @@ class TestRunDiscussion:
         monkeypatch.setattr(
             "agentmind.api.router.record_task_end", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.write_memory", AsyncMock())
+            "agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         await _run_discussion("测试话题", ["a", "b"], "u1", reg, _fake_send)
@@ -323,7 +328,7 @@ class TestRunDiscussion:
         monkeypatch.setattr(
             "agentmind.api.router.record_task_end", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.write_memory", AsyncMock())
+            "agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         await _run_discussion("测试", ["openclaw", "hermes"], "u1", reg, _fake_send)
@@ -356,7 +361,7 @@ class TestRunDiscussion:
 
         monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.write_memory", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         topic = "AI监管，必须从法律和技术两个角度分析"
@@ -393,7 +398,7 @@ class TestRunDiscussion:
 
         monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.write_memory", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         await _run_discussion("AI监管，每人限100字", ["a", "b"], "u1", reg, _fake_send)
@@ -428,7 +433,7 @@ class TestRunDiscussion:
 
         monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.write_memory", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         # 模拟用户实际说法："每次回复限制50字"
@@ -470,7 +475,7 @@ class TestRunDiscussion:
 
         monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.write_memory", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         await _run_discussion("测试", ["codex", "hermes"], "u1", reg, _fake_send)
@@ -501,7 +506,7 @@ class TestRunDiscussion:
 
         monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.write_memory", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
         await _run_discussion("测试", ["a", "b"], "u1", reg, _fake_send)

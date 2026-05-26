@@ -5,6 +5,12 @@ import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agentmind.services.task_service import TaskService as TaskService
+
+TaskService = None
 
 logger = logging.getLogger("agentmind")
 
@@ -175,6 +181,14 @@ def is_vec_available() -> bool:
 
 # ========== 异步安全的任务记录函数 ==========
 
+
+def _task_service():
+    global TaskService
+    if TaskService is None:
+        from agentmind.services.task_service import TaskService as _TaskService
+        TaskService = _TaskService
+    return TaskService()
+
 def _record_task_start_sync(trace_id: str, user_message: str):
     conn = get_db_connection()
     conn.execute(
@@ -187,7 +201,7 @@ def _record_task_start_sync(trace_id: str, user_message: str):
 
 
 async def record_task_start(trace_id: str, user_message: str):
-    await asyncio.to_thread(_record_task_start_sync, trace_id, user_message)
+    await _task_service().start_task(trace_id, user_message)
 
 
 def _record_task_update_sync(trace_id: str, status: str, matched_rule: str = None, routed_agent: str = None):
@@ -205,7 +219,7 @@ def _record_task_update_sync(trace_id: str, status: str, matched_rule: str = Non
 
 
 async def record_task_update(trace_id: str, status: str, matched_rule: str = None, routed_agent: str = None):
-    await asyncio.to_thread(_record_task_update_sync, trace_id, status, matched_rule, routed_agent)
+    await _task_service().update_task(trace_id, status, matched_rule, routed_agent)
 
 
 _MAX_RESULT_SIZE = 100 * 1024  # 100KB
@@ -321,8 +335,8 @@ async def record_task_end(
     error_message: str = None,
     result: str = None,
 ):
-    await asyncio.to_thread(
-        _save_result_sync, trace_id, status, agent_id, execution_time_ms, error_message, result
+    await _task_service().end_task(
+        trace_id, status, agent_id, execution_time_ms, error_message, result
     )
 
 
@@ -508,4 +522,4 @@ def _record_attached_turn_sync(trace_id: str, user_message: str, agent_response:
 
 
 async def record_attached_turn(trace_id: str, user_message: str, agent_response: str):
-    await asyncio.to_thread(_record_attached_turn_sync, trace_id, user_message, agent_response)
+    await _task_service().record_attached_turn(trace_id, user_message, agent_response)

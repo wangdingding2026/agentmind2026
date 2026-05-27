@@ -141,6 +141,9 @@ def test_session_runtime_service_restores_persisted_discussions():
                 "u2": {"stop": True},
             }
 
+        def list_attach_bindings(self):
+            return {}
+
     registry = Registry()
     result = SessionRuntimeService(
         session_registry=registry,
@@ -148,11 +151,44 @@ def test_session_runtime_service_restores_persisted_discussions():
         runtime_store=Store(),
     ).restore_runtime_state()
 
-    assert result == {"restored_discussions": 2}
+    assert result == {"restored_discussions": 2, "restored_attach_bindings": 0}
     assert registry.restored == {
         "u1": {"stop": False},
         "u2": {"stop": True},
     }
+
+
+def test_session_runtime_service_restores_persisted_attach_bindings():
+    from agentmind.services.session_runtime_service import SessionRuntimeService
+
+    class Registry:
+        def restore_discussions(self, discussions):
+            pass
+
+    class AttachRegistry:
+        def __init__(self):
+            self.restored = None
+
+        def restore_bindings(self, bindings):
+            self.restored = bindings
+
+    class Store:
+        def list_discussions(self):
+            return {}
+
+        def list_attach_bindings(self):
+            return {"s1": "t1", "s2": "t2"}
+
+    attach_registry = AttachRegistry()
+    result = SessionRuntimeService(
+        session_registry=Registry(),
+        task_service=_TaskService(),
+        attach_registry=attach_registry,
+        runtime_store=Store(),
+    ).restore_runtime_state()
+
+    assert result == {"restored_discussions": 0, "restored_attach_bindings": 2}
+    assert attach_registry.restored == {"s1": "t1", "s2": "t2"}
 
 
 def test_default_session_registry_has_runtime_store():

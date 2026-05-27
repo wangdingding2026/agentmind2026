@@ -30,6 +30,13 @@ class SessionRuntimeStore:
                 updated_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS attach_bindings (
+                session_id TEXT PRIMARY KEY,
+                trace_id TEXT NOT NULL UNIQUE,
+                updated_at TEXT NOT NULL
+            )
+        """)
         conn.commit()
         conn.close()
 
@@ -64,3 +71,36 @@ class SessionRuntimeStore:
         ).fetchall()
         conn.close()
         return {row["user_id"]: {"stop": bool(row["stop"])} for row in rows}
+
+    def upsert_attach_binding(self, session_id: str, trace_id: str):
+        self._ensure_schema()
+        conn = self._connect()
+        conn.execute("DELETE FROM attach_bindings WHERE trace_id=?", (trace_id,))
+        conn.execute(
+            """
+            INSERT INTO attach_bindings (session_id, trace_id, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                trace_id=excluded.trace_id,
+                updated_at=excluded.updated_at
+            """,
+            (session_id, trace_id, storage_db.now_iso()),
+        )
+        conn.commit()
+        conn.close()
+
+    def delete_attach_binding(self, trace_id: str):
+        self._ensure_schema()
+        conn = self._connect()
+        conn.execute("DELETE FROM attach_bindings WHERE trace_id=?", (trace_id,))
+        conn.commit()
+        conn.close()
+
+    def list_attach_bindings(self) -> dict[str, str]:
+        self._ensure_schema()
+        conn = self._connect()
+        rows = conn.execute(
+            "SELECT session_id, trace_id FROM attach_bindings ORDER BY session_id"
+        ).fetchall()
+        conn.close()
+        return {row["session_id"]: row["trace_id"] for row in rows}

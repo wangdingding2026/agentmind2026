@@ -34,3 +34,21 @@ def test_default_session_runtime_store_uses_current_data_dir(monkeypatch, tmp_pa
     store.upsert_discussion("u1", stop=False)
 
     assert (tmp_path / "data" / "runtime_state.db").exists()
+
+    store.upsert_attach_binding("s1", "t1")
+    assert store.list_attach_bindings() == {"s1": "t1"}
+
+
+def test_session_runtime_store_persists_attach_bindings(tmp_path):
+    from agentmind.services.session_runtime_store import SessionRuntimeStore
+
+    store = SessionRuntimeStore(tmp_path / "runtime.db")
+
+    store.upsert_attach_binding("s1", "t1")
+    assert store.list_attach_bindings() == {"s1": "t1"}
+
+    store.upsert_attach_binding("s1", "t2")
+    assert store.list_attach_bindings() == {"s1": "t2"}
+
+    store.delete_attach_binding("t2")
+    assert store.list_attach_bindings() == {}

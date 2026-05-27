@@ -32,6 +32,48 @@ class TestAttachRegistry:
         reg.bind("s1", "t2")
         assert reg.get_bound_task("s1") == "t2"
 
+    def test_attach_registry_persists_binding_lifecycle_to_runtime_store(self):
+        from agentmind.api.attach_registry import AttachRegistry
+
+        class Store:
+            def __init__(self):
+                self.upserts = []
+                self.deletes = []
+
+            def upsert_attach_binding(self, session_id, trace_id):
+                self.upserts.append((session_id, trace_id))
+
+            def delete_attach_binding(self, trace_id):
+                self.deletes.append(trace_id)
+
+        store = Store()
+        reg = AttachRegistry(runtime_store=store)
+
+        reg.bind("s1", "t1")
+        reg.unbind("t1")
+
+        assert store.upserts == [("s1", "t1")]
+        assert store.deletes == ["t1"]
+
+    def test_attach_registry_restores_bindings_without_store_writes(self):
+        from agentmind.api.attach_registry import AttachRegistry
+
+        class Store:
+            def __init__(self):
+                self.upserts = []
+
+            def upsert_attach_binding(self, session_id, trace_id):
+                self.upserts.append((session_id, trace_id))
+
+        store = Store()
+        reg = AttachRegistry(runtime_store=store)
+
+        reg.restore_bindings({"s1": "t1", "s2": "t2"})
+
+        assert reg.get_bound_task("s1") == "t1"
+        assert reg.get_bound_task("s2") == "t2"
+        assert store.upserts == []
+
 
 class TestAttachAPI:
     def test_attach_bind_endpoint(self):

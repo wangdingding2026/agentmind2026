@@ -70,12 +70,11 @@ Current boundary notes:
 - Startup Feishu auto-start now delegates to Phase 4 `ChannelHub`; startup remains a lifecycle adapter.
 - Feishu inbound messages now convert to standard `ChannelMessage` before business dispatch. `ChannelHub` owns the standard Feishu routing glue, while the old Feishu `route_callback` exists only as a migration fallback.
 - Feishu discussion stop-word handling now lives behind the `ChannelHub` standard message boundary; `FeishuAdapter` no longer owns the session stop rule.
-- `active_sessions`, `attach_to_task`, and `panel_task_stream` now delegate to `SessionRuntimeService`; active discussion state has startup recovery support, while stream listener queues remain volatile live runtime state for a later package.
+- `active_sessions`, `attach_to_task`, and `panel_task_stream` now delegate to `SessionRuntimeService`; active discussion state and attach bindings have startup recovery support, while stream listener queues remain volatile live runtime state for a later package.
 
 ## Next Migration Direction
 
 The next package should pick one runtime boundary below the panel and convert it without widening panel responsibilities. The preferred order is:
 
-1. Attach binding persistence/recovery through `SessionRuntimeService`.
-2. Stream resumability design that does not try to persist live queue objects.
-3. Remaining channel runtime concerns behind service/channel boundaries.
+1. Stream resumability design that does not try to persist live queue objects.
+2. Remaining channel runtime concerns behind service/channel boundaries.

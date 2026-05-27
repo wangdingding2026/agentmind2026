@@ -149,13 +149,16 @@ class AgentMindBootstrapper:
         strategy_manager = __import__(
             "agentmind.services.strategy_manager", fromlist=["StrategyManager"]
         ).StrategyManager(agent_registry, rule_engine)
+        attach_registry = __import__(
+            "agentmind.api.attach_registry", fromlist=["AttachRegistry"]
+        ).AttachRegistry()
         auth_token, token_is_new = load_or_generate_token(self.data_home)
 
         @asynccontextmanager
         async def lifespan(app: FastAPI):
             await agent_registry.run_health_checks()
             mark_timed_out_tasks_retriable()
-            SessionRuntimeService().restore_runtime_state()
+            SessionRuntimeService(attach_registry=attach_registry).restore_runtime_state()
             health_task = asyncio.create_task(_periodic_health_check(agent_registry))
             memory_task = asyncio.create_task(_periodic_memory_cleanup())
             workspace_task = asyncio.create_task(_periodic_workspace_cleanup(self.data_home))
@@ -200,9 +203,7 @@ class AgentMindBootstrapper:
         app.state.settings = settings
         app.state.rule_engine = rule_engine
         app.state.strategy_manager = strategy_manager
-        app.state.attach_registry = __import__(
-            "agentmind.api.attach_registry", fromlist=["AttachRegistry"]
-        ).AttachRegistry()
+        app.state.attach_registry = attach_registry
         app.state.routing_pipeline = __import__(
             "agentmind.routing.pipeline", fromlist=["RoutingPipeline"]
         ).RoutingPipeline(agent_registry, rule_engine, strategy_manager=strategy_manager)

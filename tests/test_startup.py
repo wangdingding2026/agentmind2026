@@ -71,9 +71,12 @@ async def test_startup_restores_session_runtime_state(monkeypatch, tmp_path):
     calls = []
 
     class FakeSessionRuntimeService:
+        def __init__(self, **kwargs):
+            calls.append(("service", kwargs))
+
         def restore_runtime_state(self):
             calls.append("restore")
-            return {"restored_discussions": 1}
+            return {"restored_discussions": 1, "restored_attach_bindings": 1}
 
     async def no_op_health_checks(self):
         calls.append("health")
@@ -106,4 +109,9 @@ async def test_startup_restores_session_runtime_state(monkeypatch, tmp_path):
     async with app.router.lifespan_context(app):
         pass
 
+    service_call = next(
+        call for call in calls
+        if isinstance(call, tuple) and call[0] == "service"
+    )
+    assert service_call[1]["attach_registry"] is app.state.attach_registry
     assert "restore" in calls

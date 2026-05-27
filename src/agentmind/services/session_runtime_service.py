@@ -45,7 +45,13 @@ class SessionRuntimeService:
     def restore_runtime_state(self):
         discussions = self.runtime_store.list_discussions()
         self.session_registry.restore_discussions(discussions)
-        return {"restored_discussions": len(discussions)}
+        attach_bindings = self.runtime_store.list_attach_bindings()
+        if self.attach_registry is not None:
+            self.attach_registry.restore_bindings(attach_bindings)
+        return {
+            "restored_discussions": len(discussions),
+            "restored_attach_bindings": len(attach_bindings),
+        }
 
     @staticmethod
     def _default_session_registry():

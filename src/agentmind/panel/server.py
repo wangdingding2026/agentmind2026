@@ -1,11 +1,10 @@
 import asyncio
 import inspect
-import shlex
 
-import yaml
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
+from agentmind.services.agent_config_service import AgentConfigService
 from agentmind.services.config_service import ConfigService
 from agentmind.memory.service import MemoryService
 from agentmind.services.trace_service import TraceService
@@ -108,25 +107,7 @@ def create_panel_router() -> APIRouter:
             return {"ok": False, "error": "ID、名称和命令不能为空"}
 
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-        new_agent = {
-            "id": agent_id, "name": name, "type": "cli",
-            "tags": tags, "enabled": True, "timeout": 120,
-            "config": {"command": command, "health_check": shlex.split(command)[0] + " --version"},
-        }
-
-        # 写入 agents.yaml
-        path = CONFIG_DIR / "agents.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(data, dict):
-            data = {}
-        agents = data.get("agents", [])
-        if not isinstance(agents, list):
-            agents = []
-        # 替换已存在的同 ID agent
-        agents = [a for a in agents if a.get("id") != agent_id]
-        agents.append(new_agent)
-        data["agents"] = agents
-        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+        new_agent = AgentConfigService(CONFIG_DIR).add_cli_agent(agent_id, name, command, tags)
 
         # 立即注册到运行中的 registry
         from agentmind.agents.base import AgentCapability
@@ -155,16 +136,11 @@ def create_panel_router() -> APIRouter:
         executor = registry.get_executor(agent_id)
         if executor is None:
             raise HTTPException(status_code=404, detail="Agent not found")
-        executor.capability.tags = new_tags
-        # 持久化
-        path = CONFIG_DIR / "agents.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if isinstance(data, dict):
-            for a in data.get("agents", []):
-                if isinstance(a, dict) and a.get("id") == agent_id:
-                    a["tags"] = new_tags
-            path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-        return {"ok": True, "tags": new_tags}
+        saved_tags = AgentConfigService(CONFIG_DIR).update_tags(agent_id, new_tags)
+        if saved_tags is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        executor.capability.tags = saved_tags
+        return {"ok": True, "tags": saved_tags}
 
     @router.post("/agents/{agent_id}/toggle")
     async def toggle_agent(agent_id: str, request: Request):
@@ -173,16 +149,10 @@ def create_panel_router() -> APIRouter:
         if executor is None:
             raise HTTPException(status_code=404, detail="Agent not found")
         # 切换 enabled 状态
-        new_enabled = not executor.capability.enabled
+        new_enabled = AgentConfigService(CONFIG_DIR).toggle_enabled(agent_id, executor.capability.enabled)
+        if new_enabled is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
         executor.capability.enabled = new_enabled
-        # 写入 agents.yaml
-        path = CONFIG_DIR / "agents.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if isinstance(data, dict):
-            for a in data.get("agents", []):
-                if isinstance(a, dict) and a.get("id") == agent_id:
-                    a["enabled"] = new_enabled
-            path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
         return {"agent_id": agent_id, "enabled": new_enabled}
 
     @router.get("/service/status")

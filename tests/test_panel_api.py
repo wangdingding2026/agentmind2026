@@ -116,10 +116,17 @@ class TestPanelAPI:
         calls = []
 
         class FakeAgentControlService:
-            def __init__(self, agent_registry, config_service=None, config_dir=None):
+            def __init__(
+                self,
+                agent_registry,
+                config_service=None,
+                agent_config_service=None,
+                config_dir=None,
+            ):
                 calls.append({
                     "agent_registry": agent_registry,
                     "config_service": config_service,
+                    "agent_config_service": agent_config_service,
                     "config_dir": config_dir,
                 })
 
@@ -142,6 +149,7 @@ class TestPanelAPI:
                 assert resp.json() == {"agents": [{"id": "from_service", "healthy": True}]}
                 assert calls[0]["agent_registry"] is app.state.agent_registry
                 assert calls[0]["config_service"] is not None
+                assert calls[0]["agent_config_service"] is not None
                 assert calls[0]["config_dir"] is None
                 assert calls[1] == ("list_agents",)
             finally:
@@ -973,51 +981,75 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
-    def test_agent_tags_uses_agent_config_service(self):
+    def test_agent_restart_uses_agent_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_panel_app(tmp_dir)
             client = TestClient(app)
             calls = []
 
-            class FakeAgentConfigService:
-                def __init__(self, config_dir=None):
-                    self.config_dir = config_dir
+            class FakeAgentControlService:
+                def __init__(self, *args, **kwargs):
+                    calls.append(("init", args, kwargs))
 
-                def update_tags(self, agent_id, tags):
-                    calls.append(("tags", agent_id, tags))
-                    return tags
+                async def restart_agent(self, agent_id):
+                    calls.append(("restart", agent_id))
+                    return {"agent_id": agent_id, "healthy": False}
 
             try:
-                mp.setattr("agentmind.panel.server.AgentConfigService", FakeAgentConfigService, raising=False)
-                resp = client.post("/panel/api/agents/mock_echo/tags", json={"tags": ["new"]})
+                mp.setattr("agentmind.panel.server.AgentControlService", FakeAgentControlService, raising=False)
+                resp = client.post("/panel/api/agents/mock_echo/restart")
                 assert resp.status_code == 200
-                assert resp.json()["ok"] is True
-                assert calls == [("tags", "mock_echo", ["new"])]
+                assert resp.json() == {"agent_id": "mock_echo", "healthy": False}
+                assert calls[1] == ("restart", "mock_echo")
             finally:
                 mp.undo()
 
-    def test_agent_toggle_uses_agent_config_service(self):
+    def test_agent_tags_uses_agent_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_panel_app(tmp_dir)
             client = TestClient(app)
             calls = []
 
-            class FakeAgentConfigService:
-                def __init__(self, config_dir=None):
-                    self.config_dir = config_dir
+            class FakeAgentControlService:
+                def __init__(self, *args, **kwargs):
+                    calls.append(("init", args, kwargs))
 
-                def toggle_enabled(self, agent_id, current_enabled=None):
-                    calls.append(("toggle", agent_id, current_enabled))
-                    return False
+                def update_tags(self, agent_id, tags):
+                    calls.append(("tags", agent_id, tags))
+                    return {"ok": True, "tags": tags}
 
             try:
-                mp.setattr("agentmind.panel.server.AgentConfigService", FakeAgentConfigService, raising=False)
+                mp.setattr("agentmind.panel.server.AgentControlService", FakeAgentControlService, raising=False)
+                resp = client.post("/panel/api/agents/mock_echo/tags", json={"tags": ["new"]})
+                assert resp.status_code == 200
+                assert resp.json() == {"ok": True, "tags": ["new"]}
+                assert calls[1] == ("tags", "mock_echo", ["new"])
+            finally:
+                mp.undo()
+
+    def test_agent_toggle_uses_agent_control_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeAgentControlService:
+                def __init__(self, *args, **kwargs):
+                    calls.append(("init", args, kwargs))
+
+                def toggle_enabled(self, agent_id):
+                    calls.append(("toggle", agent_id))
+                    return {"agent_id": agent_id, "enabled": False}
+
+            try:
+                mp.setattr("agentmind.panel.server.AgentControlService", FakeAgentControlService, raising=False)
                 resp = client.post("/panel/api/agents/mock_echo/toggle")
                 assert resp.status_code == 200
-                assert resp.json()["enabled"] is False
-                assert calls == [("toggle", "mock_echo", True)]
+                assert resp.json() == {"agent_id": "mock_echo", "enabled": False}
+                assert calls[1] == ("toggle", "mock_echo")
             finally:
                 mp.undo()
 

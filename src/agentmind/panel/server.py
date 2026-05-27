@@ -57,6 +57,14 @@ def _control_plane_overview_service(request: Request):
     )
 
 
+def _agent_control_service(request: Request):
+    return AgentControlService(
+        request.app.state.agent_registry,
+        config_service=ConfigService(CONFIG_DIR),
+        agent_config_service=AgentConfigService(CONFIG_DIR),
+    )
+
+
 def create_panel_router() -> APIRouter:
     router = APIRouter()
 
@@ -133,11 +141,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/agents")
     async def list_agents(request: Request):
-        service = AgentControlService(
-            request.app.state.agent_registry,
-            config_service=ConfigService(CONFIG_DIR),
-        )
-        return {"agents": service.list_agents()}
+        return {"agents": _agent_control_service(request).list_agents()}
 
     @router.get("/agents/capabilities")
     async def list_agent_capabilities(request: Request):
@@ -171,12 +175,10 @@ def create_panel_router() -> APIRouter:
 
     @router.post("/agents/{agent_id}/restart")
     async def restart_agent(agent_id: str, request: Request):
-        registry = request.app.state.agent_registry
-        executor = registry.get_executor(agent_id)
-        if executor is None:
+        result = await _agent_control_service(request).restart_agent(agent_id)
+        if result is None:
             raise HTTPException(status_code=404, detail="Agent not found")
-        await executor.health_check()
-        return {"agent_id": agent_id, "healthy": executor.is_healthy}
+        return result
 
     @router.post("/agents/{agent_id}/tags")
     async def update_agent_tags(agent_id: str, request: Request):
@@ -184,28 +186,17 @@ def create_panel_router() -> APIRouter:
         new_tags = body.get("tags", [])
         if not isinstance(new_tags, list):
             return {"ok": False, "error": "tags 必须是数组"}
-        registry = request.app.state.agent_registry
-        executor = registry.get_executor(agent_id)
-        if executor is None:
+        result = _agent_control_service(request).update_tags(agent_id, new_tags)
+        if result is None:
             raise HTTPException(status_code=404, detail="Agent not found")
-        saved_tags = AgentConfigService(CONFIG_DIR).update_tags(agent_id, new_tags)
-        if saved_tags is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        executor.capability.tags = saved_tags
-        return {"ok": True, "tags": saved_tags}
+        return result
 
     @router.post("/agents/{agent_id}/toggle")
     async def toggle_agent(agent_id: str, request: Request):
-        registry = request.app.state.agent_registry
-        executor = registry.get_executor(agent_id)
-        if executor is None:
+        result = _agent_control_service(request).toggle_enabled(agent_id)
+        if result is None:
             raise HTTPException(status_code=404, detail="Agent not found")
-        # 切换 enabled 状态
-        new_enabled = AgentConfigService(CONFIG_DIR).toggle_enabled(agent_id, executor.capability.enabled)
-        if new_enabled is None:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        executor.capability.enabled = new_enabled
-        return {"agent_id": agent_id, "enabled": new_enabled}
+        return result
 
     @router.get("/service/status")
     async def service_status(request: Request):

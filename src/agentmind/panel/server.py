@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from agentmind.services.agent_config_service import AgentConfigService
 from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
+from agentmind.services.control_plane_overview_service import ControlPlaneOverviewService
 from agentmind.services.routing_explanation_service import RoutingExplanationService
 from agentmind.services.task_explanation_service import TaskExplanationService
 from agentmind.services.task_service import TaskService
@@ -45,6 +46,17 @@ def _routing_explanation_service(request: Request):
         audit_service=AuditService(),
         capability_registry=AgentCapabilityRegistry(request.app.state.agent_registry),
         strategy_manager=_strategy_manager(request),
+    )
+
+
+def _control_plane_overview_service(request: Request):
+    from agentmind.services.capability_registry import AgentCapabilityRegistry
+
+    return ControlPlaneOverviewService(
+        task_service=TaskService(),
+        capability_registry=AgentCapabilityRegistry(request.app.state.agent_registry),
+        strategy_manager=_strategy_manager(request),
+        audit_service=AuditService(),
     )
 
 
@@ -117,6 +129,10 @@ def create_panel_router() -> APIRouter:
     async def routing_strategies(request: Request):
         strategy_manager = _strategy_manager(request)
         return {"strategies": strategy_manager.list_strategies()}
+
+    @router.get("/control/overview")
+    async def control_overview(request: Request):
+        return await _control_plane_overview_service(request).overview()
 
     @router.get("/agents")
     async def list_agents(request: Request):
@@ -211,17 +227,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/service/status")
     async def service_status(request: Request):
-        registry = request.app.state.agent_registry
-        stats = await TaskService().get_task_stats()
-        agents = list(registry.executors.values())
-        return {
-            "agents_total": len(agents),
-            "agents_healthy": sum(1 for a in agents if a.is_healthy),
-            "tasks_total": stats.get("total", 0),
-            "tasks_completed": stats.get("completed", 0),
-            "tasks_failed": stats.get("failed", 0),
-            "avg_execution_time_ms": stats.get("avg_execution_time_ms", 0),
-        }
+        return await _control_plane_overview_service(request).service_status()
 
     # === v2.0 记忆引擎 API ===
 

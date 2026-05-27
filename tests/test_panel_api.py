@@ -354,6 +354,96 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_control_overview_endpoint_uses_service(self):
+        calls = []
+
+        class FakeControlPlaneOverviewService:
+            def __init__(
+                self,
+                *,
+                task_service=None,
+                capability_registry=None,
+                strategy_manager=None,
+                audit_service=None,
+            ):
+                calls.append({
+                    "task_service": task_service,
+                    "capability_registry": capability_registry,
+                    "strategy_manager": strategy_manager,
+                    "audit_service": audit_service,
+                })
+
+            async def overview(self):
+                calls.append(("overview",))
+                return {"status": "healthy", "summary": {"agents_total": 1}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr(
+                "agentmind.panel.server.ControlPlaneOverviewService",
+                FakeControlPlaneOverviewService,
+                raising=False,
+            )
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/control/overview")
+                assert resp.status_code == 200
+                assert resp.json() == {"status": "healthy", "summary": {"agents_total": 1}}
+                assert calls[0]["task_service"] is not None
+                assert calls[0]["capability_registry"] is not None
+                assert calls[0]["strategy_manager"] is not None
+                assert calls[0]["audit_service"] is not None
+                assert calls[1] == ("overview",)
+            finally:
+                mp.undo()
+
+    def test_service_status_uses_control_plane_overview_service(self):
+        calls = []
+
+        class FakeControlPlaneOverviewService:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+
+            async def service_status(self):
+                calls.append(("service_status",))
+                return {
+                    "agents_total": 2,
+                    "agents_healthy": 1,
+                    "tasks_total": 3,
+                    "tasks_completed": 2,
+                    "tasks_failed": 1,
+                    "avg_execution_time_ms": 5,
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr(
+                "agentmind.panel.server.ControlPlaneOverviewService",
+                FakeControlPlaneOverviewService,
+                raising=False,
+            )
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/service/status")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "agents_total": 2,
+                    "agents_healthy": 1,
+                    "tasks_total": 3,
+                    "tasks_completed": 2,
+                    "tasks_failed": 1,
+                    "avg_execution_time_ms": 5,
+                }
+                assert calls[0]["task_service"] is not None
+                assert calls[0]["capability_registry"] is not None
+                assert calls[0]["strategy_manager"] is not None
+                assert calls[0]["audit_service"] is not None
+                assert calls[1] == ("service_status",)
+            finally:
+                mp.undo()
+
     def test_agent_toggle(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

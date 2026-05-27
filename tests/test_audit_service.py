@@ -124,3 +124,50 @@ def test_audit_events_are_persisted_as_json_payload(tmp_path):
         conn.close()
 
     assert json.loads(row[0]) == {"memory_id": "m1"}
+
+
+@pytest.mark.asyncio
+async def test_audit_service_record_cpe_decision_helper(tmp_path):
+    from agentmind.governance import CPERequest, GovernanceDecision, GovernanceDecisionStatus
+    from agentmind.services.audit_service import AuditService
+
+    service = AuditService(str(tmp_path / "trace.db"))
+    request = CPERequest(
+        trace_id="t-cpe",
+        user_id="u1",
+        agent_id="cloud-agent",
+        agent_security_level="cloud",
+        memory_items=[{"memory_id": "m1"}, {"memory_id": "m2"}],
+    )
+    decision = GovernanceDecision(
+        status=GovernanceDecisionStatus.REQUIRE_APPROVAL,
+        reason="sensitive context requires approval",
+        risk_level="high",
+        audit_payload={"component": "CPE", "sensitive": True},
+    )
+
+    await service.record_cpe_decision(
+        request=request,
+        decision=decision,
+        actor="system",
+        payload={"policy": "sensitive-context"},
+    )
+
+    events = await service.query_events(module="governance", action="cpe_decision")
+
+    assert len(events) == 1
+    assert events[0]["trace_id"] == "t-cpe"
+    assert events[0]["user_id"] == "u1"
+    assert events[0]["agent_id"] == "cloud-agent"
+    assert events[0]["risk_level"] == "high"
+    assert events[0]["status"] == "blocked"
+    assert events[0]["message"] == "CPE decision: require_approval"
+    assert events[0]["payload"] == {
+        "component": "CPE",
+        "decision_status": "require_approval",
+        "reason": "sensitive context requires approval",
+        "agent_security_level": "cloud",
+        "memory_count": 2,
+        "sensitive": True,
+        "policy": "sensitive-context",
+    }

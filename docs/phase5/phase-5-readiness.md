@@ -44,6 +44,8 @@ CPE start criteria must be satisfied before planning the first CPE package:
 - CPE decisions have an AuditService event shape;
 - CPE tests cover new architecture targets, not only legacy sensitive-scanner behavior.
 
+The CPE audit event shape is `module=governance`, `action=cpe_decision`, with `decision_status`, `reason`, `agent_security_level`, and `memory_count` in payload.
+
 The first CPE package should be a readiness-to-skeleton step, not broad routing or memory rewrites.
 
 ## AgentShield Start Criteria

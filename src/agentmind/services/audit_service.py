@@ -160,6 +160,38 @@ class AuditService:
             payload=event_payload,
         )
 
+    async def record_cpe_decision(
+        self,
+        *,
+        request,
+        decision,
+        actor: str = "system",
+        payload: dict[str, Any] | None = None,
+    ) -> str:
+        decision_status = getattr(decision.status, "value", str(decision.status))
+        event_payload = {
+            "component": "CPE",
+            "decision_status": decision_status,
+            "reason": decision.reason,
+            "agent_security_level": request.agent_security_level,
+            "memory_count": len(request.memory_items),
+        }
+        event_payload.update(decision.audit_payload or {})
+        event_payload.update(payload or {})
+        status = "success" if decision_status == "allow" else "blocked"
+        return await self.record_event(
+            module="governance",
+            action="cpe_decision",
+            actor=actor,
+            user_id=request.user_id,
+            trace_id=request.trace_id,
+            agent_id=request.agent_id,
+            risk_level=decision.risk_level,
+            status=status,
+            message=f"CPE decision: {decision_status}",
+            payload=event_payload,
+        )
+
     async def query_events(
         self,
         *,

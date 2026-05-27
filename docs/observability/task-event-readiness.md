@@ -46,7 +46,9 @@ Persistent task-event replay should replay stored task timeline events, not reco
 
 TaskEventService owns the local task-event storage contract and the first event vocabulary.
 
-TaskEventService is not yet wired into runtime event production, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior.
+TaskService now produces lifecycle task events through TaskEventService for task start, routing start, agent selection, execution start, completion, and failure.
+
+TaskEventService is not yet wired into partial output capture, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior beyond TaskService lifecycle production.
 
 ## Explicit Non-Goals
 

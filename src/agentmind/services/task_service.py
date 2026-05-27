@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
+from agentmind.services.task_event_service import TaskEventService
 from agentmind.storage import db as storage_db
+
+logger = logging.getLogger("agentmind")
 
 
 class TaskService:
@@ -12,8 +16,18 @@ class TaskService:
     stable service seam without changing the SQLite schema or public behavior.
     """
 
+    def __init__(self, task_event_service=None):
+        self._task_event_service = task_event_service or TaskEventService()
+
     async def start_task(self, trace_id: str, user_message: str):
         await asyncio.to_thread(storage_db._record_task_start_sync, trace_id, user_message)
+        await self._record_task_event(
+            trace_id=trace_id,
+            event_type="task_started",
+            seq=10,
+            message="task started",
+            payload={"user_message_length": len(user_message or "")},
+        )
 
     async def update_task(
         self,
@@ -29,6 +43,27 @@ class TaskService:
             matched_rule,
             routed_agent,
         )
+        if status == "routing" and routed_agent:
+            await self._record_task_event(
+                trace_id=trace_id,
+                event_type="agent_selected",
+                seq=30,
+                agent_id=routed_agent,
+                payload={"matched_rule": matched_rule or ""},
+            )
+        elif status == "routing":
+            await self._record_task_event(
+                trace_id=trace_id,
+                event_type="routing_started",
+                seq=20,
+            )
+        elif status == "executing":
+            await self._record_task_event(
+                trace_id=trace_id,
+                event_type="execution_started",
+                seq=40,
+                agent_id=routed_agent or "",
+            )
 
     async def mark_routing(
         self,
@@ -59,6 +94,17 @@ class TaskService:
             error_message,
             result,
         )
+        if status in {"completed", "failed"}:
+            payload = {"execution_time_ms": execution_time_ms}
+            if status == "failed":
+                payload["has_error"] = bool(error_message)
+            await self._record_task_event(
+                trace_id=trace_id,
+                event_type=status,
+                seq=90,
+                agent_id=agent_id or "",
+                payload=payload,
+            )
 
     async def complete_task(
         self,
@@ -112,3 +158,25 @@ class TaskService:
 
     async def get_metrics(self) -> dict:
         return await asyncio.to_thread(storage_db._get_metrics_sync)
+
+    async def _record_task_event(
+        self,
+        *,
+        trace_id: str,
+        event_type: str,
+        seq: int,
+        agent_id: str = "",
+        message: str = "",
+        payload: dict | None = None,
+    ) -> None:
+        try:
+            await self._task_event_service.record_event(
+                trace_id=trace_id,
+                event_type=event_type,
+                seq=seq,
+                agent_id=agent_id,
+                message=message,
+                payload=payload or {},
+            )
+        except Exception:
+            logger.debug("记录 task event 失败", exc_info=True)

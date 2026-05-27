@@ -70,4 +70,4 @@ Task-event readiness is guarded by architecture audit tests plus Phase 4 and Pha
 
 ## Next Direction
 
-After this readiness gate, the next package can add a minimal TaskEventService skeleton and storage contract. That package should remain service-level only before any replay or panel UI work.
+After the task event service, timeline query, explanation, and panel adapter boundaries remain green, the next package is `docs/observability/task-event-replay-readiness.md`.

@@ -42,6 +42,9 @@ class SessionRuntimeService:
         finally:
             self.session_registry.unregister_stream_listener(trace_id, queue)
 
+    def stream_snapshot(self, trace_id: str):
+        return self.session_registry.stream_snapshot(trace_id)
+
     def restore_runtime_state(self):
         discussions = self.runtime_store.list_discussions()
         self.session_registry.restore_discussions(discussions)

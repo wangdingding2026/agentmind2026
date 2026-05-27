@@ -63,5 +63,6 @@ Completed first packages:
 7. Moved Feishu discussion stop-word handling out of `FeishuAdapter` and behind the `ChannelHub` standard message boundary.
 8. Added startup recovery for persisted active discussion runtime state behind `SessionRuntimeService`; stream listener queues remain volatile.
 9. Added startup recovery for persisted attach bindings behind `SessionRuntimeService`.
+10. Added an in-process stream backlog snapshot boundary behind `SessionRuntimeService`; live stream listener queues remain volatile and are not restored.
 
-Next, continue reducing runtime-only state behind service/channel boundaries. The preferred next package is a stream resumability design that does not try to persist live queue objects, followed by remaining ChannelHub compatibility cleanup.
+Next, finish remaining ChannelHub compatibility cleanup. Persistent task-event replay, if needed, should be designed as an observability/task-event package instead of pretending live SSE queue objects can be recovered.

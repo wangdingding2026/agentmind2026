@@ -65,6 +65,23 @@ class SessionRegistry:
             del self._streams[trace_id]
         return len(stale)
 
+    def stream_snapshot(self, trace_id: str) -> dict:
+        registry = self._streams.get(trace_id)
+        if not registry:
+            return {
+                "trace_id": trace_id,
+                "backlog": [],
+                "listener_count": 0,
+                "resumable": False,
+            }
+        backlog = list(registry.get("backlog", []))
+        return {
+            "trace_id": trace_id,
+            "backlog": backlog,
+            "listener_count": len(registry.get("listeners", [])),
+            "resumable": bool(backlog),
+        }
+
     # ── 讨论状态 ──
 
     def start_discussion(self, user_id: str):

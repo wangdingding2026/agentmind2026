@@ -23,6 +23,14 @@ class _SessionRegistry:
     def unregister_stream_listener(self, trace_id, queue):
         self.unregistered.append((trace_id, queue))
 
+    def stream_snapshot(self, trace_id):
+        return {
+            "trace_id": trace_id,
+            "backlog": [{"event": "partial", "data": "hello"}],
+            "listener_count": 0,
+            "resumable": True,
+        }
+
 
 class _TaskService:
     def __init__(self):
@@ -225,3 +233,21 @@ async def test_session_runtime_service_stream_events_unregisters_listener():
     assert received == [{"event": "partial", "data": "hello"}]
     assert session_registry.registered == ["t1"]
     assert session_registry.unregistered == [("t1", session_registry.queue)]
+
+
+def test_session_runtime_service_stream_snapshot_does_not_register_listener():
+    from agentmind.services.session_runtime_service import SessionRuntimeService
+
+    session_registry = _SessionRegistry()
+    result = SessionRuntimeService(
+        session_registry=session_registry,
+        task_service=_TaskService(),
+    ).stream_snapshot("t1")
+
+    assert result == {
+        "trace_id": "t1",
+        "backlog": [{"event": "partial", "data": "hello"}],
+        "listener_count": 0,
+        "resumable": True,
+    }
+    assert session_registry.registered == []

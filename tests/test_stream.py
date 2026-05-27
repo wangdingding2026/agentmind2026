@@ -62,3 +62,50 @@ class TestStreamRegistry:
 
         assert sr.list_discussions() == {"u1": {"stop": False}}
         assert sr._streams == {}
+
+    def test_stream_snapshot_returns_backlog_without_registering_listener(self):
+        from agentmind.routing.side_effects.session_registry import SessionRegistry
+
+        sr = SessionRegistry()
+        sr.broadcast_stream_chunk("tr-snap", {"event": "partial", "data": "one"})
+        sr.broadcast_stream_chunk("tr-snap", {"event": "partial", "data": "two"})
+
+        snapshot = sr.stream_snapshot("tr-snap")
+
+        assert snapshot == {
+            "trace_id": "tr-snap",
+            "backlog": [
+                {"event": "partial", "data": "one"},
+                {"event": "partial", "data": "two"},
+            ],
+            "listener_count": 0,
+            "resumable": True,
+        }
+        assert sr._streams["tr-snap"]["listeners"] == []
+
+    def test_stream_snapshot_for_missing_trace_is_not_resumable(self):
+        from agentmind.routing.side_effects.session_registry import SessionRegistry
+
+        sr = SessionRegistry()
+
+        assert sr.stream_snapshot("missing") == {
+            "trace_id": "missing",
+            "backlog": [],
+            "listener_count": 0,
+            "resumable": False,
+        }
+
+    def test_stream_snapshot_is_not_restored_after_runtime_restore(self):
+        from agentmind.routing.side_effects.session_registry import SessionRegistry
+
+        sr = SessionRegistry()
+        sr.broadcast_stream_chunk("tr-backlog", {"event": "partial", "data": "hello"})
+
+        sr.restore_discussions({"u1": {"stop": False}})
+
+        assert sr.stream_snapshot("tr-backlog") == {
+            "trace_id": "tr-backlog",
+            "backlog": [],
+            "listener_count": 0,
+            "resumable": False,
+        }

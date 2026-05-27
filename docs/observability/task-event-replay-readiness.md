@@ -14,6 +14,8 @@ TaskTimelineService remains the read-side DTO boundary over TaskEventService eve
 
 TaskReplayService owns the service-level replay DTO boundary over TaskTimelineService.
 
+TaskReplayService normalizes replay limits at the service boundary, returns stable missing and found DTOs, and preserves TaskTimelineService event order.
+
 TaskExplanationService may include timeline DTOs through TaskTimelineService.
 
 panel/API/channel remain adapters and must not assemble replay timelines.
@@ -51,4 +53,4 @@ Replay readiness is guarded by task-event replay readiness tests, task-event obs
 
 ## Next Direction
 
-After this skeleton remains green, the next package can add service-level replay contract hardening around event limits and stable ordering. Panel UI and stream runtime changes remain out of scope until the service contract is proven.
+After this service contract remains green, the next package can decide whether a read-only panel/API adapter is needed. Stream runtime replay, observability UI, and channel replay remain out of scope until a separate adapter plan is approved.

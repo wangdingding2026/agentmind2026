@@ -12,6 +12,7 @@ from agentmind.services.control_plane_overview_service import ControlPlaneOvervi
 from agentmind.services.routing_explanation_service import RoutingExplanationService
 from agentmind.services.rule_control_service import RuleControlService
 from agentmind.services.settings_control_service import SettingsControlService
+from agentmind.services.settings_status_service import SettingsStatusService
 from agentmind.services.task_explanation_service import TaskExplanationService
 from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
@@ -76,6 +77,10 @@ def _rule_control_service(request: Request):
 
 def _settings_control_service():
     return SettingsControlService(config_service=ConfigService(CONFIG_DIR))
+
+
+def _settings_status_service():
+    return SettingsStatusService(config_service=ConfigService(CONFIG_DIR))
 
 
 def create_panel_router() -> APIRouter:
@@ -254,9 +259,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/feishu/config")
     async def feishu_get_config(request: Request):
-        data = ConfigService(CONFIG_DIR).read_settings()
-        fs = data.get("feishu", {}) if isinstance(data, dict) else {}
-        return {"app_id": fs.get("app_id", ""), "app_secret": fs.get("app_secret", ""), "enabled": fs.get("enabled", False)}
+        return _settings_status_service().get_feishu_config_view()
 
     @router.post("/feishu/config")
     async def feishu_save_config(request: Request):
@@ -367,14 +370,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/settings")
     async def get_settings():
-        data = ConfigService(CONFIG_DIR).read_settings()
-        return {
-            "memory": data.get("memory", {}),
-            "embedding": data.get("embedding", {}),
-            "semantic_router": data.get("semantic_router", {}),
-            "history": data.get("history", {}),
-            "meta": data.get("core_llm", {}),
-        }
+        return _settings_status_service().get_settings_view()
 
     @router.post("/settings")
     async def save_settings(request: Request):
@@ -391,34 +387,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/embedding/status")
     async def embedding_status():
-        """返回 embedding 运行时状态（本地模型是否安装、外部 API 是否配置等）"""
-        data = ConfigService(CONFIG_DIR).read_settings()
-        emb_cfg = data.get("embedding", {})
-
-        has_external = bool(emb_cfg.get("endpoint"))
-        try:
-            from agentmind.storage.embedding import has_local_embedding
-            has_local = has_local_embedding()
-        except Exception:
-            has_local = False
-
-        # 生成摘要
-        parts = []
-        if has_external:
-            parts.append("外部 API 已配置")
-        if has_local:
-            parts.append("本地模型已安装")
-        if not parts:
-            parts.append("未配置")
-        summary = " + ".join(parts)
-
-        return {
-            "enabled": emb_cfg.get("enabled", False),
-            "has_external_api": has_external,
-            "has_local_model": has_local,
-            "dimension": emb_cfg.get("dimension", 384),
-            "summary": summary,
-        }
+        return _settings_status_service().get_embedding_status()
 
     # === v3.0 Attach 接管 ===
 

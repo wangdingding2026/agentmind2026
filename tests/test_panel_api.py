@@ -1107,6 +1107,96 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
+    def test_settings_get_uses_settings_status_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeSettingsStatusService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def get_settings_view(self):
+                    calls.append(("settings",))
+                    return {"memory": {"enabled": True}, "meta": {"model": "fake"}}
+
+            try:
+                mp.setattr("agentmind.panel.server.SettingsStatusService", FakeSettingsStatusService, raising=False)
+                resp = client.get("/panel/api/settings")
+                assert resp.status_code == 200
+                assert resp.json() == {"memory": {"enabled": True}, "meta": {"model": "fake"}}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("settings",)
+            finally:
+                mp.undo()
+
+    def test_feishu_config_get_uses_settings_status_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeSettingsStatusService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def get_feishu_config_view(self):
+                    calls.append(("feishu",))
+                    return {"app_id": "fake", "app_secret": "masked", "enabled": True}
+
+            try:
+                mp.setattr("agentmind.panel.server.SettingsStatusService", FakeSettingsStatusService, raising=False)
+                resp = client.get("/panel/api/feishu/config")
+                assert resp.status_code == 200
+                assert resp.json() == {"app_id": "fake", "app_secret": "masked", "enabled": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("feishu",)
+            finally:
+                mp.undo()
+
+    def test_embedding_status_uses_settings_status_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeSettingsStatusService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def get_embedding_status(self):
+                    calls.append(("embedding",))
+                    return {
+                        "enabled": True,
+                        "has_external_api": False,
+                        "has_local_model": True,
+                        "dimension": 384,
+                        "summary": "本地模型已安装",
+                    }
+
+            try:
+                mp.setattr("agentmind.panel.server.SettingsStatusService", FakeSettingsStatusService, raising=False)
+                resp = client.get("/panel/api/embedding/status")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "enabled": True,
+                    "has_external_api": False,
+                    "has_local_model": True,
+                    "dimension": 384,
+                    "summary": "本地模型已安装",
+                }
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("embedding",)
+            finally:
+                mp.undo()
+
     def test_rules_save_uses_rule_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

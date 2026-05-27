@@ -80,3 +80,25 @@ def test_phase3_panel_transition_scope_is_limited_to_feishu_lifecycle():
 
     assert documented == EXPECTED_PANEL_TRANSITIONS
     assert "Phase 4 `ChannelHub`" in full_transition_section
+
+
+def test_phase4_feishu_route_callback_fallback_has_deletion_criteria():
+    docs = "\n".join([
+        PHASE3_DOC.read_text(encoding="utf-8"),
+        PANEL_BOUNDARY_DOC.read_text(encoding="utf-8"),
+    ])
+
+    assert "feishu.route_callback" in docs
+    assert "migration fallback" in docs
+    assert "delete after" in docs.lower()
+    assert "ChannelMessage" in docs
+
+
+def test_phase4_next_direction_moves_to_closeout_after_channelhub_cleanup():
+    docs = "\n".join([
+        PHASE3_DOC.read_text(encoding="utf-8"),
+        PANEL_BOUNDARY_DOC.read_text(encoding="utf-8"),
+    ])
+
+    assert "Phase 4 closeout/readiness audit" in docs
+    assert "Remaining ChannelHub compatibility cleanup" not in docs

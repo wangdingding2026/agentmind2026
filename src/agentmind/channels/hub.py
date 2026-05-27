@@ -245,6 +245,12 @@ class ChannelHub:
             ):
                 yield chunk
 
+        feishu_callback._agentmind_compatibility_boundary = {
+            "name": "feishu.route_callback",
+            "status": "migration_fallback",
+            "delete_after": "Feishu inbound handling no longer needs route_callback fallback",
+        }
+
         return adapter_factory(
             app_id=app_id,
             app_secret=app_secret,

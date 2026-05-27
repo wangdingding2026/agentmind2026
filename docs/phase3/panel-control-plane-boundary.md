@@ -68,7 +68,7 @@ Current boundary notes:
 
 - `feishu_connect`, `feishu_disconnect`, and `feishu_status` now delegate to Phase 4 `ChannelHub`.
 - Startup Feishu auto-start now delegates to Phase 4 `ChannelHub`; startup remains a lifecycle adapter.
-- Feishu inbound messages now convert to standard `ChannelMessage` before business dispatch. `ChannelHub` owns the standard Feishu routing glue, while the old Feishu `route_callback` exists only as a migration fallback.
+- Feishu inbound messages now convert to standard `ChannelMessage` before business dispatch. `ChannelHub` owns the standard Feishu routing glue, while the old `feishu.route_callback` exists only as a migration fallback. Delete after Feishu inbound handling no longer needs `route_callback` fallback and all supported Feishu inbound paths use `ChannelMessage`.
 - Feishu discussion stop-word handling now lives behind the `ChannelHub` standard message boundary; `FeishuAdapter` no longer owns the session stop rule.
 - `active_sessions`, `attach_to_task`, and `panel_task_stream` now delegate to `SessionRuntimeService`; active discussion state and attach bindings have startup recovery support. Stream resumability is limited to in-process backlog snapshots, and live listener queues remain volatile.
 
@@ -76,5 +76,5 @@ Current boundary notes:
 
 The next package should pick one runtime boundary below the panel and convert it without widening panel responsibilities. The preferred order is:
 
-1. Remaining ChannelHub compatibility cleanup.
+1. Phase 4 closeout/readiness audit.
 2. Decide whether persistent task-event replay belongs in a later observability package rather than Phase 4 live stream runtime.

@@ -35,7 +35,7 @@ Service-backed panel handlers are guarded by `tests/test_panel_control_plane_bou
 
 No panel handlers are currently documented as transition handlers.
 
-`feishu_connect`, `feishu_disconnect`, `feishu_status`, and startup Feishu auto-start now delegate to Phase 4 `ChannelHub`. Feishu inbound messages now convert to standard `ChannelMessage` before business dispatch, and `ChannelHub` owns the standard Feishu routing glue. The old Feishu `route_callback` remains only as a migration fallback.
+`feishu_connect`, `feishu_disconnect`, `feishu_status`, and startup Feishu auto-start now delegate to Phase 4 `ChannelHub`. Feishu inbound messages now convert to standard `ChannelMessage` before business dispatch, and `ChannelHub` owns the standard Feishu routing glue. The old `feishu.route_callback` remains only as a migration fallback. Delete after Feishu inbound handling no longer needs `route_callback` fallback and all supported Feishu inbound paths use `ChannelMessage`.
 
 ## Compatibility Boundaries
 
@@ -64,5 +64,6 @@ Completed first packages:
 8. Added startup recovery for persisted active discussion runtime state behind `SessionRuntimeService`; stream listener queues remain volatile.
 9. Added startup recovery for persisted attach bindings behind `SessionRuntimeService`.
 10. Added an in-process stream backlog snapshot boundary behind `SessionRuntimeService`; live stream listener queues remain volatile and are not restored.
+11. Marked `feishu.route_callback` as a compatibility-only migration fallback with explicit deletion criteria.
 
-Next, finish remaining ChannelHub compatibility cleanup. Persistent task-event replay, if needed, should be designed as an observability/task-event package instead of pretending live SSE queue objects can be recovered.
+Next, run a Phase 4 closeout/readiness audit across ChannelHub, Feishu inbound, session runtime recovery, attach recovery, and stream snapshot boundaries. Persistent task-event replay, if needed, should be designed as an observability/task-event package instead of pretending live SSE queue objects can be recovered.

@@ -294,6 +294,35 @@ async def test_channel_hub_feishu_callback_provides_send_func_to_routing():
 
 
 @pytest.mark.asyncio
+async def test_channel_hub_marks_feishu_route_callback_as_migration_fallback():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    captured = {}
+
+    def adapter_factory(**kwargs):
+        captured.update(kwargs)
+        return _Adapter()
+
+    async def route_stream_func(*args, **kwargs):
+        yield "ok"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    legacy_callback = captured["route_callback"]
+    assert getattr(legacy_callback, "_agentmind_compatibility_boundary", None) == {
+        "name": "feishu.route_callback",
+        "status": "migration_fallback",
+        "delete_after": "Feishu inbound handling no longer needs route_callback fallback",
+    }
+
+
+@pytest.mark.asyncio
 async def test_channel_hub_feishu_standard_message_handler_routes_channel_message():
     from agentmind.channels.hub import ChannelHub, ChannelMessage
 

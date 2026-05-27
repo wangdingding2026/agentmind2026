@@ -12,6 +12,8 @@ TaskEventService owns stored task timeline events.
 
 TaskTimelineService remains the read-side DTO boundary over TaskEventService events.
 
+TaskReplayService owns the service-level replay DTO boundary over TaskTimelineService.
+
 TaskExplanationService may include timeline DTOs through TaskTimelineService.
 
 panel/API/channel remain adapters and must not assemble replay timelines.
@@ -38,6 +40,7 @@ future TaskReplayService should own replay orchestration as a service-level boun
 - no observability UI in this package;
 - no stream runtime behavior changes;
 - no panel/API/channel replay assembly;
+- no panel/API/channel TaskReplayService adapters in this package;
 - no CPE or AgentShield enforcement;
 - no customer-content inspection;
 - no replay persistence migration.
@@ -48,4 +51,4 @@ Replay readiness is guarded by task-event replay readiness tests, task-event obs
 
 ## Next Direction
 
-After this readiness gate, the next package can add a minimal service-level TaskReplayService plan and RED tests. That package should still avoid panel UI and stream runtime changes until the service boundary is proven.
+After this skeleton remains green, the next package can add service-level replay contract hardening around event limits and stable ordering. Panel UI and stream runtime changes remain out of scope until the service contract is proven.

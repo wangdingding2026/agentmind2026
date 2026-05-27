@@ -10,6 +10,7 @@ from agentmind.services.rule_control_service import RuleControlService
 from agentmind.services.settings_control_service import SettingsControlService
 from agentmind.services.task_event_service import TaskEventService
 from agentmind.services.task_explanation_service import TaskExplanationService
+from agentmind.services.task_replay_service import TaskReplayService
 from agentmind.services.task_timeline_service import TaskTimelineService
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "SettingsControlService",
     "TaskEventService",
     "TaskExplanationService",
+    "TaskReplayService",
     "TaskTimelineService",
 ]

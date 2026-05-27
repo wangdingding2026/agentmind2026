@@ -52,6 +52,8 @@ TaskTimelineService owns service-level task timeline DTO assembly over TaskEvent
 
 TaskExplanationService includes TaskTimelineService timeline data at the service layer.
 
+The panel task explanation endpoint explicitly wires TaskTimelineService into TaskExplanationService and returns the service response. It remains an adapter and does not assemble, render, replay, or persist task timeline events.
+
 TaskEventService is not yet wired into partial output capture, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior beyond TaskService lifecycle production.
 
 ## Explicit Non-Goals

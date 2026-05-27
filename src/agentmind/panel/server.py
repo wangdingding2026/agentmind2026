@@ -16,6 +16,7 @@ from agentmind.services.settings_control_service import SettingsControlService
 from agentmind.services.settings_status_service import SettingsStatusService
 from agentmind.services.session_runtime_service import SessionRuntimeService
 from agentmind.services.task_explanation_service import TaskExplanationService
+from agentmind.services.task_timeline_service import TaskTimelineService
 from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
 from agentmind.services.trace_service import TraceService
@@ -122,6 +123,7 @@ def create_panel_router() -> APIRouter:
             task_service=TaskService(),
             routing_explanation_service=_routing_explanation_service(request),
             audit_service=AuditService(),
+            task_timeline_service=TaskTimelineService(),
         )
         return await service.explain(trace_id)
 

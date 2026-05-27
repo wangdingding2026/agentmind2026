@@ -313,11 +313,13 @@ class TestPanelAPI:
                 task_service=None,
                 routing_explanation_service=None,
                 audit_service=None,
+                task_timeline_service=None,
             ):
                 calls.append({
                     "task_service": task_service,
                     "routing_explanation_service": routing_explanation_service,
                     "audit_service": audit_service,
+                    "task_timeline_service": task_timeline_service,
                 })
 
             async def explain(self, trace_id):
@@ -327,6 +329,12 @@ class TestPanelAPI:
                     "found": True,
                     "status": "failed",
                     "stage": "execution",
+                    "timeline": {
+                        "trace_id": trace_id,
+                        "found": True,
+                        "event_count": 1,
+                        "timeline": [],
+                    },
                 }
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -346,10 +354,17 @@ class TestPanelAPI:
                     "found": True,
                     "status": "failed",
                     "stage": "execution",
+                    "timeline": {
+                        "trace_id": "t1",
+                        "found": True,
+                        "event_count": 1,
+                        "timeline": [],
+                    },
                 }
                 assert calls[0]["task_service"] is not None
                 assert calls[0]["routing_explanation_service"] is not None
                 assert calls[0]["audit_service"] is not None
+                assert calls[0]["task_timeline_service"] is not None
                 assert calls[1] == {"trace_id": "t1"}
             finally:
                 mp.undo()

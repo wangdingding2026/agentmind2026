@@ -66,4 +66,4 @@ Completed first packages:
 10. Added an in-process stream backlog snapshot boundary behind `SessionRuntimeService`; live stream listener queues remain volatile and are not restored.
 11. Marked `feishu.route_callback` as a compatibility-only migration fallback with explicit deletion criteria.
 
-Next, run a Phase 4 closeout/readiness audit across ChannelHub, Feishu inbound, session runtime recovery, attach recovery, and stream snapshot boundaries. Persistent task-event replay, if needed, should be designed as an observability/task-event package instead of pretending live SSE queue objects can be recovered.
+Phase 4 closure is recorded in `docs/phase4/phase-4-closure-status.md`. Next, run Phase 5 readiness before starting CPE or AgentShield work.

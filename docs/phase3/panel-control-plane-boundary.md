@@ -76,5 +76,5 @@ Current boundary notes:
 
 The next package should pick one runtime boundary below the panel and convert it without widening panel responsibilities. The preferred order is:
 
-1. Phase 4 closeout/readiness audit.
+1. Phase 5 readiness, using `docs/phase4/phase-4-closure-status.md` as the Phase 4 closure source.
 2. Decide whether persistent task-event replay belongs in a later observability package rather than Phase 4 live stream runtime.

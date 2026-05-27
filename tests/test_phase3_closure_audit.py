@@ -94,11 +94,12 @@ def test_phase4_feishu_route_callback_fallback_has_deletion_criteria():
     assert "ChannelMessage" in docs
 
 
-def test_phase4_next_direction_moves_to_closeout_after_channelhub_cleanup():
+def test_phase4_next_direction_moves_to_phase5_after_closeout():
     docs = "\n".join([
         PHASE3_DOC.read_text(encoding="utf-8"),
         PANEL_BOUNDARY_DOC.read_text(encoding="utf-8"),
     ])
 
-    assert "Phase 4 closeout/readiness audit" in docs
+    assert "docs/phase4/phase-4-closure-status.md" in docs
+    assert "Phase 5 readiness" in docs
     assert "Remaining ChannelHub compatibility cleanup" not in docs

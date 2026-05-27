@@ -114,4 +114,6 @@ git status --short
 
 ## Next Direction
 
-After Phase 5 readiness is green, plan the first security-governance skeleton package. That package should define CPE decision types and service entry points before changing routing, memory retrieval, or executor behavior.
+After Phase 5 readiness is green, the first security-governance skeleton package defines CPE and AgentShield decision contracts only.
+
+Later packages must still wire CPE into routing and memory service entry points, and wire AgentShield into execution boundaries through services. Those packages must remain TDD-scoped and must not move security rules into panel/API/channel handlers.

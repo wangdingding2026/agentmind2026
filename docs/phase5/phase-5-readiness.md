@@ -52,6 +52,8 @@ RoutingService records CPE dry-run audit events for HTTP route requests after ro
 
 RoutingExplanationService exposes CPE dry-run audit visibility as `governance_events`, derived from AuditService trace events. Panel endpoints remain pass-through adapters.
 
+CPE policy v1 marks sensitive context routed to non-local agents as `require_approval`, but RoutingService still records this as dry-run audit only and does not enforce it.
+
 The first CPE package should be a readiness-to-skeleton step, not broad routing or memory rewrites.
 
 ## AgentShield Start Criteria

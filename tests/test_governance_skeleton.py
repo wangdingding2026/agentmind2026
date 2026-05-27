@@ -43,9 +43,48 @@ def test_cpe_default_decision_contract_allows_without_runtime_policy():
     assert isinstance(decision, GovernanceDecision)
     assert decision.status == GovernanceDecisionStatus.ALLOW
     assert decision.risk_level == "low"
-    assert decision.reason == "no governance policy configured"
+    assert decision.reason == "no CPE policy matched"
     assert decision.audit_payload["component"] == "CPE"
     assert decision.audit_payload["trace_id"] == "t1"
+    assert decision.audit_payload["sensitive_context"] is False
+
+
+def test_cpe_requires_approval_for_sensitive_context_to_cloud_agent():
+    from agentmind.governance import CPE, CPERequest, GovernanceDecisionStatus
+
+    decision = CPE().evaluate(
+        CPERequest(
+            trace_id="t-sensitive",
+            user_id="u1",
+            agent_id="cloud_agent",
+            agent_security_level="cloud",
+            context={"message": "api_key='sk-abc123def456ghi789jkl012mno345pqr678stu'"},
+        )
+    )
+
+    assert decision.status == GovernanceDecisionStatus.REQUIRE_APPROVAL
+    assert decision.risk_level == "high"
+    assert decision.reason == "sensitive context requires approval for non-local agent"
+    assert decision.audit_payload["sensitive_context"] is True
+    assert decision.audit_payload["policy"] == "sensitive-context-non-local-agent"
+
+
+def test_cpe_allows_sensitive_context_to_local_agent():
+    from agentmind.governance import CPE, CPERequest, GovernanceDecisionStatus
+
+    decision = CPE().evaluate(
+        CPERequest(
+            trace_id="t-local",
+            user_id="u1",
+            agent_id="local_agent",
+            agent_security_level="local",
+            context={"message": 'password = "secret"'},
+        )
+    )
+
+    assert decision.status == GovernanceDecisionStatus.ALLOW
+    assert decision.risk_level == "low"
+    assert decision.audit_payload["sensitive_context"] is True
 
 
 def test_agent_shield_default_decision_contract_allows_without_runtime_policy():

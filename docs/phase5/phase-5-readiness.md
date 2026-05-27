@@ -50,6 +50,8 @@ RoutingService has a CPE request-builder seam for routing context, but Phase 5 h
 
 RoutingService records CPE dry-run audit events for HTTP route requests after routing decisions are made. These events do not block, reroute, or require approval.
 
+RoutingExplanationService exposes CPE dry-run audit visibility as `governance_events`, derived from AuditService trace events. Panel endpoints remain pass-through adapters.
+
 The first CPE package should be a readiness-to-skeleton step, not broad routing or memory rewrites.
 
 ## AgentShield Start Criteria

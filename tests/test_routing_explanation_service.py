@@ -27,7 +27,16 @@ class _AuditService:
 
     async def query_events(self, **kwargs):
         self.calls.append(kwargs)
-        return [{"event_id": "e1", "trace_id": "t1", "module": "routing"}]
+        return [
+            {"event_id": "e1", "trace_id": "t1", "module": "routing", "action": "decision"},
+            {
+                "event_id": "e2",
+                "trace_id": "t1",
+                "module": "governance",
+                "action": "cpe_decision",
+                "payload": {"decision_status": "allow", "mode": "dry_run"},
+            },
+        ]
 
 
 class _CapabilityRegistry:
@@ -81,7 +90,23 @@ async def test_routing_explanation_service_aggregates_trace_context():
         "signal_scoring",
     ]
     assert explanation["audit_events"] == [
-        {"event_id": "e1", "trace_id": "t1", "module": "routing"}
+        {"event_id": "e1", "trace_id": "t1", "module": "routing", "action": "decision"},
+        {
+            "event_id": "e2",
+            "trace_id": "t1",
+            "module": "governance",
+            "action": "cpe_decision",
+            "payload": {"decision_status": "allow", "mode": "dry_run"},
+        },
+    ]
+    assert explanation["governance_events"] == [
+        {
+            "event_id": "e2",
+            "trace_id": "t1",
+            "module": "governance",
+            "action": "cpe_decision",
+            "payload": {"decision_status": "allow", "mode": "dry_run"},
+        }
     ]
     assert audit_service.calls == [{"trace_id": "t1", "limit": 20}]
 
@@ -107,4 +132,5 @@ async def test_routing_explanation_service_returns_stable_missing_trace():
         "selected_agent": None,
         "strategies": [],
         "audit_events": [],
+        "governance_events": [],
     }

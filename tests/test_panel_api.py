@@ -270,7 +270,12 @@ class TestPanelAPI:
 
             async def explain(self, trace_id):
                 calls.append({"trace_id": trace_id})
-                return {"trace_id": trace_id, "found": True, "summary": "explained"}
+                return {
+                    "trace_id": trace_id,
+                    "found": True,
+                    "summary": "explained",
+                    "governance_events": [{"event_id": "e2", "module": "governance"}],
+                }
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
@@ -288,6 +293,7 @@ class TestPanelAPI:
                     "trace_id": "t1",
                     "found": True,
                     "summary": "explained",
+                    "governance_events": [{"event_id": "e2", "module": "governance"}],
                 }
                 assert calls[0]["trace_service"] is not None
                 assert calls[0]["audit_service"] is not None

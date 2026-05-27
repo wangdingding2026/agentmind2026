@@ -27,6 +27,7 @@ class _RoutingExplanationService:
             "trace_id": trace_id,
             "found": True,
             "decision": {"agent_id": "a1", "strategy": "explicit"},
+            "governance_events": [{"event_id": "e2", "module": "governance"}],
         }
 
 
@@ -61,6 +62,9 @@ async def test_task_explanation_service_explains_execution_failure():
     assert explanation["summary"] == "Task failed during execution: timeout"
     assert explanation["task"]["error_message"] == "timeout"
     assert explanation["routing"]["decision"] == {"agent_id": "a1", "strategy": "explicit"}
+    assert explanation["routing"]["governance_events"] == [
+        {"event_id": "e2", "module": "governance"}
+    ]
     assert explanation["audit_events"] == [
         {"event_id": "e1", "trace_id": "t1", "module": "execution"}
     ]

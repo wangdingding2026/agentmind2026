@@ -30,6 +30,7 @@ class RoutingExplanationService:
 
         decision = self._decision_from_trace(trace)
         selected_agent = self._selected_agent(decision.get("agent_id", ""))
+        audit_events = await self._audit_events(trace_id)
         return {
             "trace_id": trace_id,
             "found": True,
@@ -37,7 +38,8 @@ class RoutingExplanationService:
             "decision": decision,
             "selected_agent": selected_agent,
             "strategies": self._strategies(),
-            "audit_events": await self._audit_events(trace_id),
+            "audit_events": audit_events,
+            "governance_events": self._governance_events(audit_events),
         }
 
     def _missing(self, trace_id: str) -> dict[str, Any]:
@@ -49,6 +51,7 @@ class RoutingExplanationService:
             "selected_agent": None,
             "strategies": [],
             "audit_events": [],
+            "governance_events": [],
         }
 
     def _decision_from_trace(self, trace: dict[str, Any]) -> dict[str, Any]:
@@ -80,6 +83,9 @@ class RoutingExplanationService:
 
     async def _audit_events(self, trace_id: str) -> list[dict[str, Any]]:
         return await self._audit_service.query_events(trace_id=trace_id, limit=20)
+
+    def _governance_events(self, audit_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [event for event in audit_events if event.get("module") == "governance"]
 
     def _json_dict(self, value: Any) -> dict[str, Any]:
         if isinstance(value, dict):

@@ -95,5 +95,7 @@ def test_routing_service_only_has_cpe_request_builder_seam():
 
     assert "agentmind.governance" in text
     assert "def _build_cpe_request_for_routing" in text
-    assert "CPE().evaluate" not in text
-    assert "record_cpe_decision" not in text
+    assert "def _record_cpe_routing_dry_run" in text
+    assert "record_cpe_decision" in text
+    assert "raise HTTPException" not in text
+    assert "CPE decision: block" not in text

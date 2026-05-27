@@ -13,7 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from agentmind.api.models import RouteRequest
 from agentmind.core.trace import generate_trace_id
-from agentmind.governance import CPERequest
+from agentmind.governance import CPE, CPERequest
 from agentmind.memory.service import MemoryService
 from agentmind.orchestration.engine import OrchestrationEngine
 from agentmind.orchestration.models import OrchestrationPlan
@@ -23,6 +23,7 @@ from agentmind.routing.executors.single_agent import SingleAgentExecutor
 from agentmind.routing.pipeline import RoutingPipeline
 from agentmind.routing.side_effects.session_registry import session_registry as _session
 from agentmind.routing.side_effects.trace_recorder import TraceRecorder
+from agentmind.services.audit_service import AuditService
 from agentmind.services.orchestration_service import OrchestrationService
 from agentmind.storage.db import record_attached_turn, record_task_end, record_task_start, record_task_update
 
@@ -70,6 +71,19 @@ def _build_cpe_request_for_routing(
         context={"message": message, "surface": "routing"},
         memory_items=memories or [],
     )
+
+
+async def _record_cpe_routing_dry_run(cpe_request: CPERequest) -> None:
+    try:
+        decision = CPE().evaluate(cpe_request)
+        await AuditService().record_cpe_decision(
+            request=cpe_request,
+            decision=decision,
+            actor="system",
+            payload={"surface": "routing", "mode": "dry_run"},
+        )
+    except Exception:
+        logger.debug("记录 CPE routing dry-run audit 失败", exc_info=True)
 
 
 def register_stream_listener(trace_id: str) -> asyncio.Queue:
@@ -204,6 +218,16 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
     if decision is not None:
         await record_task_update(trace_id, status="routing", matched_rule=decision.strategy or "pipeline", routed_agent=decision.agent_id)
         await TraceRecorder.record_decision(trace_id, decision, route_req.user_id or "")
+        await _record_cpe_routing_dry_run(
+            _build_cpe_request_for_routing(
+                trace_id=trace_id,
+                user_id=route_req.user_id or "",
+                agent_id=decision.agent_id,
+                message=msg,
+                agent_registry=agent_registry,
+                memories=decision.context.memories if decision.context else [],
+            )
+        )
 
         if not decision.agent_id:
             await record_task_end(trace_id, "failed", error_message="无可用Agent")

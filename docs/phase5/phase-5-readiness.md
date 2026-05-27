@@ -48,6 +48,8 @@ The CPE audit event shape is `module=governance`, `action=cpe_decision`, with `d
 
 RoutingService has a CPE request-builder seam for routing context, but Phase 5 has not yet wired CPE decisions into routing behavior.
 
+RoutingService records CPE dry-run audit events for HTTP route requests after routing decisions are made. These events do not block, reroute, or require approval.
+
 The first CPE package should be a readiness-to-skeleton step, not broad routing or memory rewrites.
 
 ## AgentShield Start Criteria

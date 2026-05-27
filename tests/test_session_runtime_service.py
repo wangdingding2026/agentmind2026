@@ -99,6 +99,68 @@ def test_session_runtime_service_attach_binds_session_to_trace():
     assert attach_registry.bindings == [("s1", "t1")]
 
 
+def test_session_registry_persists_discussion_lifecycle_to_runtime_store():
+    from agentmind.routing.side_effects.session_registry import SessionRegistry
+
+    class Store:
+        def __init__(self):
+            self.upserts = []
+            self.deletes = []
+
+        def upsert_discussion(self, user_id, stop):
+            self.upserts.append((user_id, stop))
+
+        def delete_discussion(self, user_id):
+            self.deletes.append(user_id)
+
+    store = Store()
+    registry = SessionRegistry(runtime_store=store)
+
+    registry.start_discussion("u1")
+    registry.stop_discussion("u1")
+    registry.end_discussion("u1")
+
+    assert store.upserts == [("u1", False), ("u1", True)]
+    assert store.deletes == ["u1"]
+
+
+def test_session_runtime_service_restores_persisted_discussions():
+    from agentmind.services.session_runtime_service import SessionRuntimeService
+
+    class Registry:
+        def __init__(self):
+            self.restored = None
+
+        def restore_discussions(self, discussions):
+            self.restored = discussions
+
+    class Store:
+        def list_discussions(self):
+            return {
+                "u1": {"stop": False},
+                "u2": {"stop": True},
+            }
+
+    registry = Registry()
+    result = SessionRuntimeService(
+        session_registry=registry,
+        task_service=_TaskService(),
+        runtime_store=Store(),
+    ).restore_runtime_state()
+
+    assert result == {"restored_discussions": 2}
+    assert registry.restored == {
+        "u1": {"stop": False},
+        "u2": {"stop": True},
+    }
+
+
+def test_default_session_registry_has_runtime_store():
+    from agentmind.routing.side_effects.session_registry import session_registry
+
+    assert getattr(session_registry, "_runtime_store", None) is not None
+
+
 @pytest.mark.asyncio
 async def test_session_runtime_service_stream_events_unregisters_listener():
     import asyncio

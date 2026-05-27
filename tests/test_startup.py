@@ -1,4 +1,7 @@
 from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
 
 from agentmind.startup import AgentMindBootstrapper, load_or_generate_token
 
@@ -59,3 +62,48 @@ def test_startup_maybe_start_feishu_delegates_to_channel_hub(monkeypatch):
 
     assert result == "adapter"
     assert calls == [(config_service, app, settings)]
+
+
+@pytest.mark.asyncio
+async def test_startup_restores_session_runtime_state(monkeypatch, tmp_path):
+    from agentmind.startup import AgentMindBootstrapper
+
+    calls = []
+
+    class FakeSessionRuntimeService:
+        def restore_runtime_state(self):
+            calls.append("restore")
+            return {"restored_discussions": 1}
+
+    async def no_op_health_checks(self):
+        calls.append("health")
+
+    monkeypatch.setattr(
+        "agentmind.startup.SessionRuntimeService",
+        FakeSessionRuntimeService,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "agentmind.agents.registry.AgentRegistry.run_health_checks",
+        no_op_health_checks,
+    )
+    monkeypatch.setattr(
+        "agentmind.startup.mark_timed_out_tasks_retriable",
+        lambda: calls.append("tasks"),
+    )
+    monkeypatch.setattr("agentmind.startup._maybe_start_feishu", AsyncMock(return_value=None))
+
+    data_home = tmp_path
+    (data_home / "config").mkdir(parents=True)
+    (data_home / "config" / "settings.yaml").write_text(
+        "feishu:\n  enabled: false\n",
+        encoding="utf-8",
+    )
+    (data_home / "config" / "agents.yaml").write_text("agents: []\n", encoding="utf-8")
+    (data_home / "config" / "routes.yaml").write_text("rules: []\n", encoding="utf-8")
+
+    app = AgentMindBootstrapper(port=8765, data_home=data_home).create_app()
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert "restore" in calls

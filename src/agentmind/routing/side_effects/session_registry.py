@@ -10,9 +10,10 @@ import time
 class SessionRegistry:
     """流监听 + 讨论状态的统一注册表。"""
 
-    def __init__(self):
+    def __init__(self, runtime_store=None):
         self._streams: dict[str, dict] = {}
         self._discussions: dict[str, dict] = {}
+        self._runtime_store = runtime_store
 
     # ── 流监听 ──
 
@@ -68,11 +69,15 @@ class SessionRegistry:
 
     def start_discussion(self, user_id: str):
         self._discussions[user_id] = {"stop": False}
+        if self._runtime_store is not None:
+            self._runtime_store.upsert_discussion(user_id, stop=False)
 
     def stop_discussion(self, user_id: str):
         disc = self._discussions.get(user_id)
         if disc:
             disc["stop"] = True
+            if self._runtime_store is not None:
+                self._runtime_store.upsert_discussion(user_id, stop=True)
 
     def is_discussion_active(self, user_id: str) -> bool:
         disc = self._discussions.get(user_id)
@@ -80,10 +85,25 @@ class SessionRegistry:
 
     def end_discussion(self, user_id: str):
         self._discussions.pop(user_id, None)
+        if self._runtime_store is not None:
+            self._runtime_store.delete_discussion(user_id)
 
     def list_discussions(self) -> dict[str, dict]:
         return dict(self._discussions)
 
+    def restore_discussions(self, discussions: dict[str, dict]):
+        self._streams = {}
+        self._discussions = {
+            str(user_id): {"stop": bool(discussion.get("stop", False))}
+            for user_id, discussion in discussions.items()
+        }
+
+
+def _default_runtime_store():
+    from agentmind.services.session_runtime_store import SessionRuntimeStore
+
+    return SessionRuntimeStore()
+
 
 # 模块级单例
-session_registry = SessionRegistry()
+session_registry = SessionRegistry(runtime_store=_default_runtime_store())

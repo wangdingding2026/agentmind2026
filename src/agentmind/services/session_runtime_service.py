@@ -2,10 +2,17 @@ from agentmind.services.task_service import TaskService
 
 
 class SessionRuntimeService:
-    def __init__(self, session_registry=None, task_service=None, attach_registry=None):
+    def __init__(
+        self,
+        session_registry=None,
+        task_service=None,
+        attach_registry=None,
+        runtime_store=None,
+    ):
         self.session_registry = session_registry or self._default_session_registry()
         self.task_service = task_service or TaskService()
         self.attach_registry = attach_registry
+        self.runtime_store = runtime_store or self._default_runtime_store()
 
     async def active_sessions(self):
         discussions = [
@@ -35,8 +42,19 @@ class SessionRuntimeService:
         finally:
             self.session_registry.unregister_stream_listener(trace_id, queue)
 
+    def restore_runtime_state(self):
+        discussions = self.runtime_store.list_discussions()
+        self.session_registry.restore_discussions(discussions)
+        return {"restored_discussions": len(discussions)}
+
     @staticmethod
     def _default_session_registry():
         from agentmind.routing.side_effects.session_registry import session_registry
 
         return session_registry
+
+    @staticmethod
+    def _default_runtime_store():
+        from agentmind.services.session_runtime_store import SessionRuntimeStore
+
+        return SessionRuntimeStore()

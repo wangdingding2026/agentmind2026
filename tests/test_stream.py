@@ -50,3 +50,15 @@ class TestStreamRegistry:
 
         sr.broadcast_stream_chunk("tr-full", {"event": "partial", "data": '"overflow"'})
         assert "tr-full" not in sr._streams
+
+    def test_stream_backlog_is_not_restored_with_discussions(self):
+        from agentmind.routing.side_effects.session_registry import SessionRegistry
+
+        sr = SessionRegistry()
+        sr.broadcast_stream_chunk("tr-backlog", {"event": "partial", "data": "hello"})
+        assert "tr-backlog" in sr._streams
+
+        sr.restore_discussions({"u1": {"stop": False}})
+
+        assert sr.list_discussions() == {"u1": {"stop": False}}
+        assert sr._streams == {}

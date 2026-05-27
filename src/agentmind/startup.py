@@ -23,6 +23,7 @@ from agentmind.config.defaults import generate_default_configs
 from agentmind.core.rule_engine import RuleEngine
 from agentmind.memory.workers.scheduler import MemoryWorkerScheduler
 from agentmind.services.config_service import ConfigService
+from agentmind.services.session_runtime_service import SessionRuntimeService
 from agentmind.storage.db import DATA_HOME, initialize_data_directory, mark_timed_out_tasks_retriable
 
 logger = logging.getLogger("agentmind")
@@ -154,6 +155,7 @@ class AgentMindBootstrapper:
         async def lifespan(app: FastAPI):
             await agent_registry.run_health_checks()
             mark_timed_out_tasks_retriable()
+            SessionRuntimeService().restore_runtime_state()
             health_task = asyncio.create_task(_periodic_health_check(agent_registry))
             memory_task = asyncio.create_task(_periodic_memory_cleanup())
             workspace_task = asyncio.create_task(_periodic_workspace_cleanup(self.data_home))

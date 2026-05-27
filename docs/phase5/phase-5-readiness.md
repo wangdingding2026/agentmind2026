@@ -128,6 +128,6 @@ git status --short
 
 ## Next Direction
 
-After Phase 5 readiness is green, the first security-governance skeleton package defines CPE and AgentShield decision contracts only.
+Phase 5 closure is recorded in `docs/phase5/phase-5-closure-status.md`.
 
-Later packages must still wire CPE into routing and memory service entry points, and wire AgentShield into execution boundaries through services. Those packages must remain TDD-scoped and must not move security rules into panel/API/channel handlers.
+Next, start Phase 6 readiness only. Phase 6 implementation has not started.

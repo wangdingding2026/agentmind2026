@@ -48,6 +48,8 @@ TaskEventService owns the local task-event storage contract and the first event 
 
 TaskService now produces lifecycle task events through TaskEventService for task start, routing start, agent selection, execution start, completion, and failure.
 
+TaskTimelineService owns service-level task timeline DTO assembly over TaskEventService events.
+
 TaskEventService is not yet wired into partial output capture, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior beyond TaskService lifecycle production.
 
 ## Explicit Non-Goals

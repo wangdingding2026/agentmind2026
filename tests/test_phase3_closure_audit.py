@@ -42,11 +42,7 @@ REQUIRED_DOCUMENT_MARKERS = {
     "feishu_status",
 }
 
-EXPECTED_PANEL_TRANSITIONS = {
-    "feishu_connect",
-    "feishu_disconnect",
-    "feishu_status",
-}
+EXPECTED_PANEL_TRANSITIONS = set()
 
 
 def test_phase3_closure_status_document_exists_and_names_required_boundaries():

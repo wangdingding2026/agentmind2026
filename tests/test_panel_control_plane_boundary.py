@@ -43,13 +43,12 @@ SERVICE_BACKED_HANDLERS = {
     "active_sessions",
     "attach_to_task",
     "panel_task_stream",
-}
-
-REQUIRED_TRANSITION_HANDLERS = {
     "feishu_connect",
     "feishu_disconnect",
     "feishu_status",
 }
+
+REQUIRED_TRANSITION_HANDLERS = set()
 
 FORBIDDEN_SERVICE_BACKED_PATTERNS = {
     "request.app.state.agent_registry.executors": "panel must not traverse executor registry",

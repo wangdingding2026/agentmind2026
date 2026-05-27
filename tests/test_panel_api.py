@@ -1197,6 +1197,87 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
+    def test_feishu_connect_uses_channel_hub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeChannelHub:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                async def connect_feishu(self, app_arg, app_id, app_secret):
+                    calls.append(("connect", app_arg, app_id, app_secret))
+                    return {"ok": True, "connected": True}
+
+            try:
+                mp.setattr("agentmind.panel.server.ChannelHub", FakeChannelHub, raising=False)
+                resp = client.post("/panel/api/feishu/connect", json={
+                    "app_id": "app",
+                    "app_secret": "secret",
+                })
+                assert resp.status_code == 200
+                assert resp.json() == {"ok": True, "connected": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("connect", app, "app", "secret")
+            finally:
+                mp.undo()
+
+    def test_feishu_disconnect_uses_channel_hub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeChannelHub:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                async def disconnect_feishu(self, app_arg):
+                    calls.append(("disconnect", app_arg))
+                    return {"ok": True}
+
+            try:
+                mp.setattr("agentmind.panel.server.ChannelHub", FakeChannelHub, raising=False)
+                resp = client.post("/panel/api/feishu/disconnect")
+                assert resp.status_code == 200
+                assert resp.json() == {"ok": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("disconnect", app)
+            finally:
+                mp.undo()
+
+    def test_feishu_status_uses_channel_hub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeChannelHub:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def feishu_status(self, app_arg):
+                    calls.append(("status", app_arg))
+                    return {"enabled": True, "connected": True}
+
+            try:
+                mp.setattr("agentmind.panel.server.ChannelHub", FakeChannelHub, raising=False)
+                resp = client.get("/panel/api/feishu/status")
+                assert resp.status_code == 200
+                assert resp.json() == {"enabled": True, "connected": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("status", app)
+            finally:
+                mp.undo()
+
     def test_connectors_endpoint_uses_connector_discovery_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

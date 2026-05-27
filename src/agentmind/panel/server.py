@@ -1,9 +1,9 @@
-import asyncio
 import inspect
 
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
+from agentmind.channels.hub import ChannelHub
 from agentmind.services.agent_config_service import AgentConfigService
 from agentmind.services.agent_control_service import AgentControlService
 from agentmind.services.connector_discovery_service import ConnectorDiscoveryService
@@ -93,6 +93,10 @@ def _session_runtime_service(request: Request):
     return SessionRuntimeService(
         attach_registry=getattr(request.app.state, "attach_registry", None),
     )
+
+
+def _channel_hub():
+    return ChannelHub(config_service=ConfigService(CONFIG_DIR))
 
 
 def create_panel_router() -> APIRouter:
@@ -270,69 +274,16 @@ def create_panel_router() -> APIRouter:
 
     @router.post("/feishu/connect")
     async def feishu_connect(request: Request):
-        """保存配置并立即连接飞书通道"""
         body = await request.json()
-        app_id = body.get("app_id", "").strip()
-        app_secret = body.get("app_secret", "").strip()
-
-        if not app_id or not app_secret:
-            return {"ok": False, "error": "App ID 和 App Secret 不能为空"}
-
-        # 1. 持久化到 settings.yaml
-        feishu_config = {"enabled": True, "app_id": app_id, "app_secret": app_secret}
-        ConfigService(CONFIG_DIR).update_settings_sections({"feishu": feishu_config})
-
-        # 2. 停掉旧连接（如果有）
-        old = getattr(request.app.state, "feishu_adapter", None)
-        if old:
-            await old.stop()
-
-        # 3. 更新 app.state.settings 以便重启时记住
-        request.app.state.settings["feishu"] = feishu_config
-
-        # 4. 启动新连接
-        try:
-            from agentmind.channels.feishu import FeishuAdapter
-            from agentmind.api.router import route_stream
-
-            async def feishu_callback(msg: str, sender_id: str):
-                async for chunk in route_stream(
-                    msg, sender_id,
-                    request.app.state.agent_registry,
-                    request.app.state.rule_engine,
-                    request.app.state.settings,
-                ):
-                    yield chunk
-
-            adapter = FeishuAdapter(
-                app_id=app_id,
-                app_secret=app_secret,
-                route_callback=feishu_callback,
-            )
-            await adapter.start()
-            await asyncio.sleep(0.5)
-            if adapter._ws_thread and adapter._ws_thread.is_alive():
-                request.app.state.feishu_adapter = adapter
-                return {"ok": True, "connected": True}
-            else:
-                await adapter.stop()
-                return {"ok": False, "error": "WebSocket 连接失败，请检查 app_id/app_secret 是否正确，或查看服务日志"}
-        except Exception as e:
-            return {"ok": False, "error": f"连接失败: {e}"}
+        return await _channel_hub().connect_feishu(
+            request.app,
+            body.get("app_id", ""),
+            body.get("app_secret", ""),
+        )
 
     @router.post("/feishu/disconnect")
     async def feishu_disconnect(request: Request):
-        """断开飞书通道"""
-        adapter = getattr(request.app.state, "feishu_adapter", None)
-        if adapter:
-            await adapter.stop()
-            request.app.state.feishu_adapter = None
-        service = ConfigService(CONFIG_DIR)
-        data = service.read_settings()
-        if isinstance(data, dict) and "feishu" in data:
-            data["feishu"]["enabled"] = False
-            service.write_settings(data)
-        return {"ok": True}
+        return await _channel_hub().disconnect_feishu(request.app)
 
     # === 路由规则管理 ===
 
@@ -371,11 +322,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/feishu/status")
     async def feishu_status(request: Request):
-        adapter = getattr(request.app.state, "feishu_adapter", None)
-        return {
-            "enabled": adapter is not None,
-            "connected": adapter is not None and adapter._ws_thread is not None and adapter._ws_thread.is_alive(),
-        }
+        return _channel_hub().feishu_status(request.app)
 
     @router.get("/embedding/status")
     async def embedding_status():

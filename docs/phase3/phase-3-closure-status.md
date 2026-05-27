@@ -33,13 +33,9 @@ This keeps the architecture rule intact:
 
 Service-backed panel handlers are guarded by `tests/test_panel_control_plane_boundary.py`.
 
-The only documented transition handlers are:
+No panel handlers are currently documented as transition handlers.
 
-- `feishu_connect`
-- `feishu_disconnect`
-- `feishu_status`
-
-These handlers still own channel lifecycle state in `app.state`, adapter start/stop, and direct Feishu adapter health checks. They belong in Phase 4 `ChannelHub`, because the target boundary is channel lifecycle management, not another panel helper.
+`feishu_connect`, `feishu_disconnect`, and `feishu_status` now delegate to Phase 4 `ChannelHub`. Feishu startup auto-start and adapter message-processing internals remain below the panel and should be migrated in later Phase 4 packages.
 
 ## Compatibility Boundaries
 
@@ -54,13 +50,13 @@ These are not new long-term architecture dependencies. Future deletion or consol
 
 ## Phase 4 Entry Recommendation
 
-Start Phase 4 with `ChannelHub`.
+Phase 4 started with `ChannelHub`.
 
-Preferred first package:
+Completed first packages:
 
-1. Add a `ChannelHub` service boundary for channel lifecycle and status.
-2. Move Feishu connect/disconnect/status from panel into `ChannelHub`.
-3. Keep panel as request adapter only.
-4. Add architecture tests that prevent channel lifecycle logic from returning to `panel/server.py`.
+1. Added a `ChannelHub` service boundary for channel lifecycle and status.
+2. Moved Feishu connect/disconnect/status from panel into `ChannelHub`.
+3. Kept panel as request adapter only.
+4. Added architecture tests that prevent channel lifecycle logic from returning to `panel/server.py`.
 
-After `ChannelHub`, schedule persistence/recovery work for session and stream runtime state. That work should build on `SessionRuntimeService`; it should not move runtime state back into panel.
+Next, migrate startup Feishu auto-start into `ChannelHub`, then move FeishuAdapter message handling toward standard `ChannelMessage`. After that, schedule persistence/recovery work for session and stream runtime state. That work should build on `SessionRuntimeService`; it should not move runtime state back into panel.

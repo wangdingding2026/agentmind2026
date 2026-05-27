@@ -8,6 +8,7 @@ class _Adapter:
         self.started = 0
         self.stopped = 0
         self.sent = []
+        self._ws_thread = _Thread(True)
 
     async def start(self):
         self.started += 1
@@ -21,6 +22,43 @@ class _Adapter:
 
     async def send_message(self, user_id, content):
         self.sent.append((user_id, content))
+
+
+class _Thread:
+    def __init__(self, alive):
+        self._alive = alive
+
+    def is_alive(self):
+        return self._alive
+
+
+class _State:
+    pass
+
+
+class _App:
+    def __init__(self):
+        self.state = _State()
+        self.state.agent_registry = object()
+        self.state.rule_engine = object()
+        self.state.settings = {"feishu": {"enabled": False}}
+
+
+class _ConfigService:
+    def __init__(self):
+        self.updated = []
+        self.written = []
+        self.settings = {"feishu": {"enabled": True, "app_id": "app", "app_secret": "secret"}}
+
+    def update_settings_sections(self, sections):
+        self.updated.append(sections)
+
+    def read_settings(self):
+        return self.settings
+
+    def write_settings(self, data):
+        self.written.append(data)
+        self.settings = data
 
 
 def test_channel_message_defaults():
@@ -113,3 +151,64 @@ async def test_channel_hub_rejects_unknown_channel_lifecycle_calls():
         "error": "Channel not registered",
     }
     assert hub.channel_status("missing") is None
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_connects_feishu_with_existing_response_shape():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    config_service = _ConfigService()
+    created = []
+
+    def adapter_factory(**kwargs):
+        created.append(kwargs)
+        return _Adapter()
+
+    async def route_stream_func(*args, **kwargs):
+        yield "ok"
+
+    hub = ChannelHub(
+        config_service=config_service,
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+
+    result = await hub.connect_feishu(app, "app", "secret")
+
+    assert result == {"ok": True, "connected": True}
+    assert config_service.updated == [{
+        "feishu": {"enabled": True, "app_id": "app", "app_secret": "secret"}
+    }]
+    assert app.state.settings["feishu"] == {"enabled": True, "app_id": "app", "app_secret": "secret"}
+    assert app.state.feishu_adapter.started == 1
+    assert created[0]["app_id"] == "app"
+    assert created[0]["app_secret"] == "secret"
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_disconnects_feishu_and_disables_config():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    adapter = _Adapter()
+    app.state.feishu_adapter = adapter
+    config_service = _ConfigService()
+    hub = ChannelHub(config_service=config_service)
+
+    result = await hub.disconnect_feishu(app)
+
+    assert result == {"ok": True}
+    assert adapter.stopped == 1
+    assert app.state.feishu_adapter is None
+    assert config_service.settings["feishu"]["enabled"] is False
+    assert config_service.written == [config_service.settings]
+
+
+def test_channel_hub_reports_feishu_status():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    app.state.feishu_adapter = _Adapter()
+
+    assert ChannelHub().feishu_status(app) == {"enabled": True, "connected": True}

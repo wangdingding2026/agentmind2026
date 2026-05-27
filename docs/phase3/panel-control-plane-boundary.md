@@ -46,6 +46,9 @@ These handlers are already migrated and should stay service delegated:
 - `active_sessions`
 - `attach_to_task`
 - `panel_task_stream`
+- `feishu_connect`
+- `feishu_disconnect`
+- `feishu_status`
 
 For these handlers, panel must not:
 
@@ -59,20 +62,17 @@ For these handlers, panel must not:
 
 ## Transition Handlers
 
-These handlers still contain direct runtime/read-side logic and are intentionally classified as migration boundaries, not target architecture:
-
-- `feishu_connect`
-- `feishu_disconnect`
-- `feishu_status`
+No panel handlers are currently classified as transition boundaries.
 
 Current boundary notes:
 
-- `feishu_connect`, `feishu_disconnect`, and `feishu_status` belong with Phase 4 `ChannelHub` because they own channel lifecycle, app state, and adapter health.
+- `feishu_connect`, `feishu_disconnect`, and `feishu_status` now delegate to Phase 4 `ChannelHub`.
 - `active_sessions`, `attach_to_task`, and `panel_task_stream` now delegate to `SessionRuntimeService`; the underlying in-process runtime state still needs a later persistence/recovery package.
 
 ## Next Migration Direction
 
-The next package should pick one runtime boundary and convert it to a service without widening panel responsibilities. The preferred order is:
+The next package should pick one runtime boundary below the panel and convert it without widening panel responsibilities. The preferred order is:
 
-1. ChannelHub-backed Feishu lifecycle migration.
-2. Persistence/recovery for session and stream runtime state.
+1. Startup Feishu auto-start through `ChannelHub`.
+2. FeishuAdapter message processing through standard `ChannelMessage`.
+3. Persistence/recovery for session and stream runtime state.

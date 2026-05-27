@@ -1,4 +1,7 @@
 """飞书通道适配器测试"""
+import asyncio
+from unittest.mock import AsyncMock
+
 import pytest
 
 
@@ -42,6 +45,99 @@ class TestFeishuDedup:
             adapter._processed_msgs.append(f"msg-{i}")
         assert len(adapter._processed_msgs) == 1000  # maxlen
         assert "msg-0" not in adapter._processed_msgs  # 最早被挤出
+
+
+class TestFeishuStandardMessage:
+    def test_feishu_adapter_converts_queue_payload_to_channel_message(self):
+        from agentmind.channels.feishu import FeishuAdapter
+        from agentmind.channels.hub import ChannelMessage
+
+        adapter = FeishuAdapter("fake_id", "fake_secret", None)
+
+        message = adapter._to_channel_message({
+            "sender_id": "u1",
+            "text": "hello",
+            "msg_id": "m1",
+        })
+
+        assert isinstance(message, ChannelMessage)
+        assert message.channel_id == "feishu"
+        assert message.sender_id == "u1"
+        assert message.text == "hello"
+        assert message.raw_payload == {
+            "sender_id": "u1",
+            "text": "hello",
+            "msg_id": "m1",
+        }
+        assert message.metadata == {"msg_id": "m1"}
+
+    @pytest.mark.asyncio
+    async def test_feishu_adapter_processes_message_through_standard_callback(self, monkeypatch):
+        from agentmind.channels.feishu import FeishuAdapter
+
+        received = []
+
+        async def message_callback(message):
+            received.append(message)
+            return ["standard ", "reply"]
+
+        adapter = FeishuAdapter("fake_id", "fake_secret", None, message_callback=message_callback)
+        await adapter._message_queue.put({"sender_id": "u1", "text": "hello", "msg_id": "m1"})
+        sent = []
+        reactions = []
+
+        async def add_reaction(msg_id, emoji_type="MUSCLE"):
+            reactions.append(("add", msg_id, emoji_type))
+            return "r1"
+
+        async def remove_reaction(msg_id, reaction_id):
+            reactions.append(("remove", msg_id, reaction_id))
+
+        async def send_message(user_id, content, root_msg_id=""):
+            sent.append((user_id, content, root_msg_id))
+            adapter._main_loop_task.cancel()
+
+        monkeypatch.setattr(adapter, "_add_reaction", add_reaction)
+        monkeypatch.setattr(adapter, "_remove_reaction", remove_reaction)
+        monkeypatch.setattr(adapter, "send_message", send_message)
+
+        adapter._main_loop_task = asyncio.create_task(adapter._process_messages())
+        await adapter._main_loop_task
+
+        assert received[0].channel_id == "feishu"
+        assert received[0].sender_id == "u1"
+        assert received[0].text == "hello"
+        assert received[0].metadata == {"msg_id": "m1"}
+        assert reactions == [("add", "m1", "MUSCLE"), ("remove", "m1", "r1")]
+        assert sent == [("u1", "standard reply", "m1")]
+
+    @pytest.mark.asyncio
+    async def test_feishu_adapter_keeps_legacy_route_callback_fallback(self, monkeypatch):
+        from agentmind.channels.feishu import FeishuAdapter
+
+        calls = []
+
+        async def route_callback(text, sender_id):
+            calls.append((text, sender_id))
+            yield "legacy reply"
+
+        adapter = FeishuAdapter("fake_id", "fake_secret", route_callback)
+        await adapter._message_queue.put({"sender_id": "u1", "text": "hello", "msg_id": "m1"})
+        sent = []
+
+        async def send_message(user_id, content, root_msg_id=""):
+            sent.append((user_id, content, root_msg_id))
+            adapter._main_loop_task.cancel()
+
+        monkeypatch.setattr(adapter, "_add_reaction", AsyncMock(return_value="r1"))
+        monkeypatch.setattr(adapter, "_remove_reaction", AsyncMock())
+        monkeypatch.setattr(adapter, "send_message", send_message)
+
+        adapter._main_loop_task = asyncio.create_task(adapter._process_messages())
+        await adapter._main_loop_task
+
+        assert calls == [("hello", "u1")]
+        assert sent == [("u1", "legacy reply", "m1")]
 
 
 class TestFeishuChunking:

@@ -95,6 +95,26 @@ class ChannelHub:
             return None
         return await self._message_handler(message)
 
+    async def _handle_feishu_message(self, app: Any, message: ChannelMessage) -> list[str]:
+        route_stream_func = self._route_stream_func or self._default_route_stream_func
+
+        async def _send(text: str):
+            adapter = getattr(app.state, "feishu_adapter", None)
+            if adapter:
+                await adapter.send_message(message.sender_id, text)
+
+        chunks = []
+        async for chunk in route_stream_func(
+            message.text,
+            message.sender_id,
+            app.state.agent_registry,
+            app.state.rule_engine,
+            app.state.settings,
+            send_func=_send,
+        ):
+            chunks.append(chunk)
+        return chunks
+
     async def connect_feishu(self, app: Any, app_id: str, app_secret: str) -> dict[str, Any]:
         app_id = app_id.strip()
         app_secret = app_secret.strip()
@@ -184,6 +204,9 @@ class ChannelHub:
         adapter_factory = self._feishu_adapter_factory or self._default_feishu_adapter_factory
         route_stream_func = self._route_stream_func or self._default_route_stream_func
 
+        async def feishu_message_callback(message: ChannelMessage):
+            return await self._handle_feishu_message(app, message)
+
         async def feishu_callback(msg: str, sender_id: str):
             async def _send(text: str):
                 adapter = getattr(app.state, "feishu_adapter", None)
@@ -204,6 +227,7 @@ class ChannelHub:
             app_id=app_id,
             app_secret=app_secret,
             route_callback=feishu_callback,
+            message_callback=feishu_message_callback,
         )
 
     @staticmethod

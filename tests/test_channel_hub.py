@@ -291,3 +291,49 @@ async def test_channel_hub_feishu_callback_provides_send_func_to_routing():
 
     assert chunks == ["ok"]
     assert adapter.sent == [("u1", "side effect reply")]
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_feishu_standard_message_handler_routes_channel_message():
+    from agentmind.channels.hub import ChannelHub, ChannelMessage
+
+    app = _App()
+    adapter = _Adapter()
+    captured = {}
+    route_calls = []
+
+    def adapter_factory(**kwargs):
+        captured.update(kwargs)
+        return adapter
+
+    async def route_stream_func(*args, **kwargs):
+        route_calls.append((args, kwargs))
+        await kwargs["send_func"]("side effect reply")
+        yield "main "
+        yield "reply"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    result = await captured["message_callback"](
+        ChannelMessage(
+            channel_id="feishu",
+            sender_id="u1",
+            text="hello",
+            metadata={"msg_id": "m1"},
+        )
+    )
+
+    assert result == ["main ", "reply"]
+    assert route_calls[0][0][:5] == (
+        "hello",
+        "u1",
+        app.state.agent_registry,
+        app.state.rule_engine,
+        app.state.settings,
+    )
+    assert adapter.sent == [("u1", "side effect reply")]

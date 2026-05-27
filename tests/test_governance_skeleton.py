@@ -75,10 +75,9 @@ def test_agent_shield_default_decision_contract_allows_without_runtime_policy():
     assert decision.audit_payload["action"] == "execute"
 
 
-def test_governance_skeleton_is_not_wired_into_runtime_adapters_or_services_yet():
+def test_governance_skeleton_is_not_wired_into_runtime_adapters_or_memory_yet():
     checked_paths = [
         PANEL_SERVER,
-        ROUTER_SERVICE,
         MEMORY_SERVICE,
         *CHANNELS_DIR.glob("*.py"),
     ]
@@ -89,3 +88,12 @@ def test_governance_skeleton_is_not_wired_into_runtime_adapters_or_services_yet(
             offenders.append(str(path.relative_to(PROJECT_ROOT)))
 
     assert offenders == []
+
+
+def test_routing_service_only_has_cpe_request_builder_seam():
+    text = ROUTER_SERVICE.read_text(encoding="utf-8")
+
+    assert "agentmind.governance" in text
+    assert "def _build_cpe_request_for_routing" in text
+    assert "CPE().evaluate" not in text
+    assert "record_cpe_decision" not in text

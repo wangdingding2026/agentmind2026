@@ -13,6 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from agentmind.api.models import RouteRequest
 from agentmind.core.trace import generate_trace_id
+from agentmind.governance import CPERequest
 from agentmind.memory.service import MemoryService
 from agentmind.orchestration.engine import OrchestrationEngine
 from agentmind.orchestration.models import OrchestrationPlan
@@ -44,6 +45,31 @@ class RoutingService:
 
 def _get_app(request_or_app):
     return getattr(request_or_app, "app", request_or_app)
+
+
+def _build_cpe_request_for_routing(
+    *,
+    trace_id: str,
+    user_id: str,
+    agent_id: str,
+    message: str,
+    agent_registry,
+    memories: list[dict] | None = None,
+) -> CPERequest:
+    executor = agent_registry.get_executor(agent_id) if hasattr(agent_registry, "get_executor") else None
+    if executor is None:
+        executor = getattr(agent_registry, "executors", {}).get(agent_id)
+    security_level = ""
+    if executor is not None:
+        security_level = getattr(getattr(executor, "capability", None), "security_level", "")
+    return CPERequest(
+        trace_id=trace_id,
+        user_id=user_id,
+        agent_id=agent_id,
+        agent_security_level=security_level,
+        context={"message": message, "surface": "routing"},
+        memory_items=memories or [],
+    )
 
 
 def register_stream_listener(trace_id: str) -> asyncio.Queue:

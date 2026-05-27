@@ -46,6 +46,8 @@ CPE start criteria must be satisfied before planning the first CPE package:
 
 The CPE audit event shape is `module=governance`, `action=cpe_decision`, with `decision_status`, `reason`, `agent_security_level`, and `memory_count` in payload.
 
+RoutingService has a CPE request-builder seam for routing context, but Phase 5 has not yet wired CPE decisions into routing behavior.
+
 The first CPE package should be a readiness-to-skeleton step, not broad routing or memory rewrites.
 
 ## AgentShield Start Criteria

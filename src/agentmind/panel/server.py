@@ -11,6 +11,7 @@ from agentmind.services.config_service import ConfigService
 from agentmind.services.control_plane_overview_service import ControlPlaneOverviewService
 from agentmind.services.routing_explanation_service import RoutingExplanationService
 from agentmind.services.rule_control_service import RuleControlService
+from agentmind.services.settings_control_service import SettingsControlService
 from agentmind.services.task_explanation_service import TaskExplanationService
 from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
@@ -71,6 +72,10 @@ def _rule_control_service(request: Request):
         config_service=ConfigService(CONFIG_DIR),
         rule_engine=request.app.state.rule_engine,
     )
+
+
+def _settings_control_service():
+    return SettingsControlService(config_service=ConfigService(CONFIG_DIR))
 
 
 def create_panel_router() -> APIRouter:
@@ -256,12 +261,7 @@ def create_panel_router() -> APIRouter:
     @router.post("/feishu/config")
     async def feishu_save_config(request: Request):
         body = await request.json()
-        ConfigService(CONFIG_DIR).update_settings_sections({"feishu": {
-            "enabled": body.get("enabled", False),
-            "app_id": body.get("app_id", ""),
-            "app_secret": body.get("app_secret", ""),
-        }})
-        return {"ok": True}
+        return _settings_control_service().save_feishu_config(body)
 
     @router.post("/feishu/connect")
     async def feishu_connect(request: Request):
@@ -379,19 +379,7 @@ def create_panel_router() -> APIRouter:
     @router.post("/settings")
     async def save_settings(request: Request):
         body = await request.json()
-        sections = {}
-        if "memory" in body:
-            sections["memory"] = body["memory"]
-        if "embedding" in body:
-            sections["embedding"] = body["embedding"]
-        if "semantic_router" in body:
-            sections["semantic_router"] = body["semantic_router"]
-        if "history" in body:
-            sections["history"] = body["history"]
-        if "meta" in body:
-            sections["core_llm"] = body["meta"]
-        ConfigService(CONFIG_DIR).update_settings_sections(sections)
-        return {"ok": True}
+        return _settings_control_service().save_settings(body)
 
     @router.get("/feishu/status")
     async def feishu_status(request: Request):

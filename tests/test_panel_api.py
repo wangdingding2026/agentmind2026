@@ -1045,29 +1045,65 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
-    def test_settings_save_uses_config_service(self):
+    def test_settings_save_uses_settings_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_panel_app(tmp_dir)
             client = TestClient(app)
             calls = []
 
-            class FakeConfigService:
-                def __init__(self, config_dir=None):
-                    self.config_dir = config_dir
+            class FakeSettingsControlService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
 
-                def update_settings_sections(self, sections):
-                    calls.append(sections)
-                    return {"memory": {"max_entries": 321}}
+                def save_settings(self, body):
+                    calls.append(("settings", body))
+                    return {"ok": True}
 
             try:
-                mp.setattr("agentmind.panel.server.ConfigService", FakeConfigService)
+                mp.setattr("agentmind.panel.server.SettingsControlService", FakeSettingsControlService, raising=False)
                 resp = client.post("/panel/api/settings", json={
                     "memory": {"max_entries": 321},
                 })
                 assert resp.status_code == 200
-                assert resp.json()["ok"] is True
-                assert calls == [{"memory": {"max_entries": 321}}]
+                assert resp.json() == {"ok": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("settings", {"memory": {"max_entries": 321}})
+            finally:
+                mp.undo()
+
+    def test_feishu_config_save_uses_settings_control_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeSettingsControlService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def save_feishu_config(self, body):
+                    calls.append(("feishu", body))
+                    return {"ok": True}
+
+            try:
+                mp.setattr("agentmind.panel.server.SettingsControlService", FakeSettingsControlService, raising=False)
+                resp = client.post("/panel/api/feishu/config", json={
+                    "enabled": True,
+                    "app_id": "test",
+                    "app_secret": "secret",
+                })
+                assert resp.status_code == 200
+                assert resp.json() == {"ok": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[1] == ("feishu", {
+                    "enabled": True,
+                    "app_id": "test",
+                    "app_secret": "secret",
+                })
             finally:
                 mp.undo()
 

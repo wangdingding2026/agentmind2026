@@ -944,31 +944,23 @@ class TestServiceMetrics:
 
 
 class TestPanelConfigServiceUsage:
-    def test_agent_add_uses_agent_config_service(self):
+    def test_agent_add_uses_agent_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_panel_app(tmp_dir)
             client = TestClient(app)
             calls = []
 
-            class FakeAgentConfigService:
-                def __init__(self, config_dir=None):
-                    self.config_dir = config_dir
+            class FakeAgentControlService:
+                def __init__(self, *args, **kwargs):
+                    calls.append(("init", args, kwargs))
 
                 def add_cli_agent(self, agent_id, name, command, tags):
                     calls.append(("add", agent_id, name, command, tags))
-                    return {
-                        "id": agent_id,
-                        "name": name,
-                        "type": "cli",
-                        "tags": tags,
-                        "enabled": True,
-                        "timeout": 120,
-                        "config": {"command": command, "health_check": "echo --version"},
-                    }
+                    return {"ok": True}
 
             try:
-                mp.setattr("agentmind.panel.server.AgentConfigService", FakeAgentConfigService, raising=False)
+                mp.setattr("agentmind.panel.server.AgentControlService", FakeAgentControlService, raising=False)
                 resp = client.post("/panel/api/agents/add", json={
                     "id": "new_agent",
                     "name": "New Agent",
@@ -976,8 +968,8 @@ class TestPanelConfigServiceUsage:
                     "tags": "general,code",
                 })
                 assert resp.status_code == 200
-                assert resp.json()["ok"] is True
-                assert calls == [("add", "new_agent", "New Agent", "echo ok", ["general", "code"])]
+                assert resp.json() == {"ok": True}
+                assert calls[1] == ("add", "new_agent", "New Agent", "echo ok", ["general", "code"])
             finally:
                 mp.undo()
 

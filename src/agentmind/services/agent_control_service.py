@@ -44,6 +44,26 @@ class AgentControlService:
             })
         return agents
 
+    def add_cli_agent(
+        self,
+        agent_id: str,
+        name: str,
+        command: str,
+        tags: list[str],
+    ) -> dict[str, Any]:
+        from agentmind.agents.base import AgentCapability
+        from agentmind.agents.cli_executor import CLIExecutor
+
+        new_agent = self._agent_config_service.add_cli_agent(
+            agent_id,
+            name,
+            command,
+            tags,
+        )
+        cap = AgentCapability(**new_agent)
+        self._registry.executors[agent_id] = CLIExecutor(cap)
+        return {"ok": True}
+
     async def restart_agent(self, agent_id: str) -> dict[str, Any] | None:
         executor = self._registry.get_executor(agent_id)
         if executor is None:

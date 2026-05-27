@@ -60,6 +60,18 @@ class _AgentConfigService:
         self.calls.append(("toggle", agent_id, current_enabled))
         return False
 
+    def add_cli_agent(self, agent_id, name, command, tags):
+        self.calls.append(("add", agent_id, name, command, tags))
+        return {
+            "id": agent_id,
+            "name": name,
+            "type": "cli",
+            "tags": tags,
+            "enabled": True,
+            "timeout": 120,
+            "config": {"command": command, "health_check": "echo --version"},
+        }
+
 
 def test_agent_control_service_lists_agent_management_view_with_masked_config():
     from agentmind.services.agent_control_service import AgentControlService
@@ -138,3 +150,25 @@ def test_agent_control_service_toggles_enabled_and_runtime_capability():
     assert registry.get_executor("a1").capability.enabled is False
     assert agent_config_service.calls == [("toggle", "a1", True)]
     assert missing is None
+
+
+def test_agent_control_service_adds_cli_agent_and_registers_runtime_executor():
+    from agentmind.agents.cli_executor import CLIExecutor
+    from agentmind.services.agent_control_service import AgentControlService
+
+    registry = _Registry()
+    agent_config_service = _AgentConfigService()
+    service = AgentControlService(
+        registry,
+        config_service=_ConfigService(),
+        agent_config_service=agent_config_service,
+    )
+
+    result = service.add_cli_agent("new_agent", "New Agent", "echo ok", ["general"])
+
+    assert result == {"ok": True}
+    assert agent_config_service.calls == [
+        ("add", "new_agent", "New Agent", "echo ok", ["general"])
+    ]
+    assert isinstance(registry.executors["new_agent"], CLIExecutor)
+    assert registry.executors["new_agent"].capability.name == "New Agent"

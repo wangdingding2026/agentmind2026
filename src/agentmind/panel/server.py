@@ -163,15 +163,7 @@ def create_panel_router() -> APIRouter:
             return {"ok": False, "error": "ID、名称和命令不能为空"}
 
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-        new_agent = AgentConfigService(CONFIG_DIR).add_cli_agent(agent_id, name, command, tags)
-
-        # 立即注册到运行中的 registry
-        from agentmind.agents.base import AgentCapability
-        from agentmind.agents.cli_executor import CLIExecutor
-        cap = AgentCapability(**new_agent)
-        request.app.state.agent_registry.executors[agent_id] = CLIExecutor(cap)
-
-        return {"ok": True}
+        return _agent_control_service(request).add_cli_agent(agent_id, name, command, tags)
 
     @router.post("/agents/{agent_id}/restart")
     async def restart_agent(agent_id: str, request: Request):

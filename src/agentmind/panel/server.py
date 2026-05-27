@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from agentmind.services.agent_config_service import AgentConfigService
 from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
+from agentmind.services.routing_explanation_service import RoutingExplanationService
 from agentmind.memory.service import MemoryService
 from agentmind.services.trace_service import TraceService
 from agentmind.storage.db import CONFIG_DIR, get_metrics, get_task_detail, get_task_stats, get_recent_errors, query_tasks
@@ -20,6 +21,18 @@ async def _reload_rule_engine(rule_engine):
     result = rule_engine.reload()
     if inspect.isawaitable(result):
         await result
+
+
+def _strategy_manager(request: Request):
+    strategy_manager = getattr(request.app.state, "strategy_manager", None)
+    if strategy_manager is None:
+        from agentmind.services.strategy_manager import StrategyManager
+
+        strategy_manager = StrategyManager(
+            request.app.state.agent_registry,
+            request.app.state.rule_engine,
+        )
+    return strategy_manager
 
 
 def create_panel_router() -> APIRouter:
@@ -74,16 +87,21 @@ def create_panel_router() -> APIRouter:
         )
         return {"events": events}
 
+    @router.get("/routing/explanations/{trace_id}")
+    async def routing_explanation(trace_id: str, request: Request):
+        from agentmind.services.capability_registry import AgentCapabilityRegistry
+
+        service = RoutingExplanationService(
+            trace_service=TraceService(),
+            audit_service=AuditService(),
+            capability_registry=AgentCapabilityRegistry(request.app.state.agent_registry),
+            strategy_manager=_strategy_manager(request),
+        )
+        return await service.explain(trace_id)
+
     @router.get("/routing/strategies")
     async def routing_strategies(request: Request):
-        strategy_manager = getattr(request.app.state, "strategy_manager", None)
-        if strategy_manager is None:
-            from agentmind.services.strategy_manager import StrategyManager
-
-            strategy_manager = StrategyManager(
-                request.app.state.agent_registry,
-                request.app.state.rule_engine,
-            )
+        strategy_manager = _strategy_manager(request)
         return {"strategies": strategy_manager.list_strategies()}
 
     @router.get("/agents")

@@ -206,6 +206,54 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_routing_explanation_endpoint_uses_service(self):
+        calls = []
+
+        class FakeRoutingExplanationService:
+            def __init__(
+                self,
+                *,
+                trace_service=None,
+                audit_service=None,
+                capability_registry=None,
+                strategy_manager=None,
+            ):
+                calls.append({
+                    "trace_service": trace_service,
+                    "audit_service": audit_service,
+                    "capability_registry": capability_registry,
+                    "strategy_manager": strategy_manager,
+                })
+
+            async def explain(self, trace_id):
+                calls.append({"trace_id": trace_id})
+                return {"trace_id": trace_id, "found": True, "summary": "explained"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr(
+                "agentmind.panel.server.RoutingExplanationService",
+                FakeRoutingExplanationService,
+                raising=False,
+            )
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/routing/explanations/t1")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "trace_id": "t1",
+                    "found": True,
+                    "summary": "explained",
+                }
+                assert calls[0]["trace_service"] is not None
+                assert calls[0]["audit_service"] is not None
+                assert calls[0]["capability_registry"] is not None
+                assert calls[0]["strategy_manager"] is not None
+                assert calls[1] == {"trace_id": "t1"}
+            finally:
+                mp.undo()
+
     def test_agent_toggle(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

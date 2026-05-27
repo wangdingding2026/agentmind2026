@@ -142,7 +142,7 @@ async def test_route_request_records_cpe_dry_run_without_changing_decision(monke
 
 
 @pytest.mark.asyncio
-async def test_routing_cpe_dry_run_records_approval_required_for_sensitive_cloud(monkeypatch):
+async def test_routing_cpe_dry_run_does_not_inspect_customer_message_content(monkeypatch):
     from agentmind.services import routing_service
 
     calls = {}
@@ -170,6 +170,8 @@ async def test_routing_cpe_dry_run_records_approval_required_for_sensitive_cloud
     await routing_service._record_cpe_routing_dry_run(request)
 
     decision = calls["audit"]["decision"]
-    assert decision.status.value == "require_approval"
-    assert decision.risk_level == "high"
+    assert decision.status.value == "allow"
+    assert decision.risk_level == "low"
+    assert decision.audit_payload["content_inspection"] is False
+    assert "sensitive_context" not in decision.audit_payload
     assert calls["audit"]["payload"] == {"surface": "routing", "mode": "dry_run"}

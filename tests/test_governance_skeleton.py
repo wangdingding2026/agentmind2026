@@ -43,13 +43,15 @@ def test_cpe_default_decision_contract_allows_without_runtime_policy():
     assert isinstance(decision, GovernanceDecision)
     assert decision.status == GovernanceDecisionStatus.ALLOW
     assert decision.risk_level == "low"
-    assert decision.reason == "no CPE policy matched"
+    assert decision.reason == "no CPE policy configured"
     assert decision.audit_payload["component"] == "CPE"
     assert decision.audit_payload["trace_id"] == "t1"
-    assert decision.audit_payload["sensitive_context"] is False
+    assert decision.audit_payload["content_inspection"] is False
+    assert decision.audit_payload["policy"] == "permissive-no-content-inspection"
+    assert "sensitive_context" not in decision.audit_payload
 
 
-def test_cpe_requires_approval_for_sensitive_context_to_cloud_agent():
+def test_cpe_does_not_inspect_customer_message_content_by_default():
     from agentmind.governance import CPE, CPERequest, GovernanceDecisionStatus
 
     decision = CPE().evaluate(
@@ -62,29 +64,12 @@ def test_cpe_requires_approval_for_sensitive_context_to_cloud_agent():
         )
     )
 
-    assert decision.status == GovernanceDecisionStatus.REQUIRE_APPROVAL
-    assert decision.risk_level == "high"
-    assert decision.reason == "sensitive context requires approval for non-local agent"
-    assert decision.audit_payload["sensitive_context"] is True
-    assert decision.audit_payload["policy"] == "sensitive-context-non-local-agent"
-
-
-def test_cpe_allows_sensitive_context_to_local_agent():
-    from agentmind.governance import CPE, CPERequest, GovernanceDecisionStatus
-
-    decision = CPE().evaluate(
-        CPERequest(
-            trace_id="t-local",
-            user_id="u1",
-            agent_id="local_agent",
-            agent_security_level="local",
-            context={"message": 'password = "secret"'},
-        )
-    )
-
     assert decision.status == GovernanceDecisionStatus.ALLOW
     assert decision.risk_level == "low"
-    assert decision.audit_payload["sensitive_context"] is True
+    assert decision.reason == "no CPE policy configured"
+    assert decision.audit_payload["content_inspection"] is False
+    assert decision.audit_payload["policy"] == "permissive-no-content-inspection"
+    assert "sensitive_context" not in decision.audit_payload
 
 
 def test_agent_shield_default_decision_contract_allows_without_runtime_policy():

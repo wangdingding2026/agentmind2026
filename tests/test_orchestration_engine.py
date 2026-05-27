@@ -1,6 +1,7 @@
 import pytest
 
-from agentmind.api.models import OrchestrationStep
+from agentmind.agents.base import AgentCapability, StreamEvent, StreamEventType
+from agentmind.api.models import OrchestrationPlan, OrchestrationStep
 
 
 def test_engine_validates_and_sorts_diamond_dag():
@@ -92,3 +93,99 @@ def test_api_orchestration_functions_delegate_to_default_engine(monkeypatch):
         ("sort", [1, 2]),
         ("context", 2, {1: "result"}),
     ]
+
+
+class _StreamingExecutor:
+    def __init__(self, agent_id, outputs):
+        self.capability = AgentCapability(id=agent_id, name=f"{agent_id} name", type="cli")
+        self.is_healthy = True
+        self.outputs = outputs
+        self.instructions = []
+
+    async def execute_stream(self, instruction):
+        self.instructions.append(instruction)
+        for output in self.outputs:
+            yield StreamEvent(StreamEventType.CONTENT, output)
+
+
+class _Registry:
+    def __init__(self, executors):
+        self.executors = executors
+
+    def get_executor(self, agent_id):
+        return self.executors.get(agent_id)
+
+
+@pytest.mark.asyncio
+async def test_engine_execute_events_streams_ordered_step_events():
+    from agentmind.orchestration.engine import OrchestrationEngine
+
+    first = _StreamingExecutor("planner", ["plan"])
+    second = _StreamingExecutor("writer", ["draft"])
+    registry = _Registry({"planner": first, "writer": second})
+    plan = OrchestrationPlan(
+        plan_id="content-flow",
+        steps=[
+            OrchestrationStep(step_id=2, agent_id="writer", instruction="write", depends_on=[1]),
+            OrchestrationStep(step_id=1, agent_id="planner", instruction="plan", depends_on=[]),
+        ],
+    )
+
+    events = [event async for event in OrchestrationEngine().execute_events(plan, registry)]
+
+    assert events == [
+        {"event": "node_status", "data": {"step_id": 1, "status": "executing"}},
+        {"event": "partial", "data": {"step_id": 1, "content": "plan"}},
+        {"event": "node_status", "data": {"step_id": 1, "status": "completed"}},
+        {"event": "node_status", "data": {"step_id": 2, "status": "executing"}},
+        {"event": "partial", "data": {"step_id": 2, "content": "draft"}},
+        {"event": "node_status", "data": {"step_id": 2, "status": "completed"}},
+        {"event": "status", "data": {"status": "orchestration_complete", "plan_id": "content-flow"}},
+    ]
+    assert "前置步骤 1" in second.instructions[0]
+    assert "plan" in second.instructions[0]
+    assert "write" in second.instructions[0]
+
+
+@pytest.mark.asyncio
+async def test_engine_execute_events_reports_missing_executor():
+    from agentmind.orchestration.engine import OrchestrationEngine
+
+    plan = OrchestrationPlan(
+        plan_id="missing-agent-flow",
+        steps=[OrchestrationStep(step_id=1, agent_id="missing", instruction="run", depends_on=[])],
+    )
+
+    events = [event async for event in OrchestrationEngine().execute_events(plan, _Registry({}))]
+
+    assert events == [
+        {"event": "node_status", "data": {"step_id": 1, "status": "executing"}},
+        {
+            "event": "node_status",
+            "data": {"step_id": 1, "status": "failed", "error": "Agent missing 不可用"},
+        },
+        {"event": "status", "data": {"status": "orchestration_complete", "plan_id": "missing-agent-flow"}},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_engine_execute_events_can_use_initial_instruction_for_root_steps():
+    from agentmind.orchestration.engine import OrchestrationEngine
+
+    executor = _StreamingExecutor("planner", ["plan"])
+    registry = _Registry({"planner": executor})
+    plan = OrchestrationPlan(
+        plan_id="triggered-flow",
+        steps=[OrchestrationStep(step_id=1, agent_id="planner", instruction="template", depends_on=[])],
+    )
+
+    _events = [
+        event
+        async for event in OrchestrationEngine().execute_events(
+            plan,
+            registry,
+            initial_instruction="user asked for this specific task",
+        )
+    ]
+
+    assert executor.instructions == ["user asked for this specific task"]

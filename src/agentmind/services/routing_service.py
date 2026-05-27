@@ -14,12 +14,15 @@ from sse_starlette.sse import EventSourceResponse
 from agentmind.api.models import RouteRequest
 from agentmind.core.trace import generate_trace_id
 from agentmind.memory.service import MemoryService
+from agentmind.orchestration.engine import OrchestrationEngine
+from agentmind.orchestration.models import OrchestrationPlan
 from agentmind.routing.context import RequestIdentity
 from agentmind.routing.executors.self_reply import SelfReplyExecutor
 from agentmind.routing.executors.single_agent import SingleAgentExecutor
 from agentmind.routing.pipeline import RoutingPipeline
 from agentmind.routing.side_effects.session_registry import session_registry as _session
 from agentmind.routing.side_effects.trace_recorder import TraceRecorder
+from agentmind.services.orchestration_service import OrchestrationService
 from agentmind.storage.db import record_attached_turn, record_task_end, record_task_start, record_task_update
 
 logger = logging.getLogger("agentmind")
@@ -258,51 +261,26 @@ async def route_stream(msg: str, user_id: str, agent_registry, engine, settings,
 
 
 def _match_orchestration(msg: str) -> dict | None:
-    from agentmind.api.orchestration import _load_orchestrations, _increment_orchestration_usage
-    plans = _load_orchestrations()
-    msg_lower = msg.lower()
-    for plan in plans:
-        for tw in plan.get("trigger_words", []):
-            if tw.lower() in msg_lower:
-                _increment_orchestration_usage(plan["plan_id"])
-                return plan
-    return None
+    return OrchestrationService().match_plan(msg)
 
 
 async def _execute_orchestration_plan(plan: dict, user_id: str, agent_registry, send_func, user_msg: str = ""):
-    from agentmind.api.orchestration import validate_dag, topological_sort
-    from agentmind.api.models import OrchestrationStep
-
-    steps = [OrchestrationStep(**s) for s in plan.get("steps", [])]
+    dag_plan = OrchestrationPlan(plan_id=plan.get("plan_id", ""), steps=plan.get("steps", []))
     try:
-        validate_dag(steps)
-        sorted_steps = topological_sort(steps)
+        async for event in OrchestrationEngine().execute_events(
+            dag_plan,
+            agent_registry,
+            initial_instruction=user_msg,
+        ):
+            if not send_func:
+                continue
+            if event["event"] == "partial":
+                await send_func(event["data"].get("content", ""))
+            elif event["event"] == "node_status" and event["data"].get("status") == "failed":
+                await send_func(f"编排步骤 {event['data'].get('step_id')} 失败：{event['data'].get('error')}")
     except ValueError as e:
         if send_func:
             await send_func(f"编排执行失败：{e}")
-        return
-
-    step_results: dict[int, str] = {}
-    for step in sorted_steps:
-        executor = agent_registry.get_executor(step.agent_id)
-        if not executor or not executor.is_healthy:
-            continue
-        instruction = user_msg if user_msg else step.instruction
-        if step.depends_on:
-            context_parts = []
-            for dep_id in step.depends_on:
-                if dep_id in step_results:
-                    context_parts.append(step_results[dep_id][:1000])
-            if context_parts:
-                instruction = "前置步骤结果：\n" + "\n".join(context_parts) + "\n\n当前任务：" + instruction
-        try:
-            task_result = await executor.execute(instruction)
-            result = task_result.output if task_result.success else (task_result.error or "执行失败")
-        except Exception as e:
-            result = str(e)
-        step_results[step.step_id] = result[:4000]
-        if send_func:
-            await send_func(f"【{executor.capability.name}】{result[:1500]}")
 
 
 def _resolve_agent_mention(raw: str, agent_registry) -> str | None:

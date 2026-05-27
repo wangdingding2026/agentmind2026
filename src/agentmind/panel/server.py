@@ -10,6 +10,7 @@ from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
 from agentmind.services.control_plane_overview_service import ControlPlaneOverviewService
 from agentmind.services.routing_explanation_service import RoutingExplanationService
+from agentmind.services.rule_control_service import RuleControlService
 from agentmind.services.task_explanation_service import TaskExplanationService
 from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
@@ -62,6 +63,13 @@ def _agent_control_service(request: Request):
         request.app.state.agent_registry,
         config_service=ConfigService(CONFIG_DIR),
         agent_config_service=AgentConfigService(CONFIG_DIR),
+    )
+
+
+def _rule_control_service(request: Request):
+    return RuleControlService(
+        config_service=ConfigService(CONFIG_DIR),
+        rule_engine=request.app.state.rule_engine,
     )
 
 
@@ -324,9 +332,8 @@ def create_panel_router() -> APIRouter:
     # === 路由规则管理 ===
 
     @router.get("/rules")
-    async def list_rules():
-        data = ConfigService(CONFIG_DIR).read_routes()
-        return {"rules": data.get("rules", []) if isinstance(data, dict) else []}
+    async def list_rules(request: Request):
+        return {"rules": _rule_control_service(request).list_rules()}
 
     @router.post("/rules")
     async def save_rule(request: Request):
@@ -334,39 +341,11 @@ def create_panel_router() -> APIRouter:
         name = body.get("name", "").strip()
         if not name:
             return {"ok": False, "error": "规则名称不能为空"}
-        rule = {
-            "name": name,
-            "type": body.get("type", "keyword"),
-            "patterns": body.get("patterns", []),
-            "target_tags": body.get("target_tags", []),
-            "priority": body.get("priority", 10),
-            "tags": body.get("tags", []),
-        }
-        service = ConfigService(CONFIG_DIR)
-        data = service.read_routes()
-        rules = data.get("rules", [])
-        if not isinstance(rules, list):
-            rules = []
-        exist_idx = next((i for i, r in enumerate(rules) if isinstance(r, dict) and r.get("name") == name), None)
-        if exist_idx is not None:
-            rules[exist_idx] = rule
-        else:
-            rules.append(rule)
-        data["rules"] = rules
-        service.write_routes(data)
-        # 热加载到运行中的引擎
-        await _reload_rule_engine(request.app.state.rule_engine)
-        return {"ok": True, "name": name}
+        return await _rule_control_service(request).save_rule(body)
 
     @router.delete("/rules/{name}")
     async def delete_rule(name: str, request: Request):
-        service = ConfigService(CONFIG_DIR)
-        data = service.read_routes()
-        if isinstance(data, dict):
-            data["rules"] = [r for r in data.get("rules", []) if isinstance(r, dict) and r.get("name") != name]
-            service.write_routes(data)
-        await _reload_rule_engine(request.app.state.rule_engine)
-        return {"ok": True}
+        return await _rule_control_service(request).delete_rule(name)
 
     # === 活跃会话 ===
 

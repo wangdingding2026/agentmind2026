@@ -1071,26 +1071,23 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
-    def test_rules_save_uses_config_service(self):
+    def test_rules_save_uses_rule_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_panel_app(tmp_dir)
             client = TestClient(app)
-            writes = []
+            calls = []
 
-            class FakeConfigService:
-                def __init__(self, config_dir=None):
-                    self.config_dir = config_dir
+            class FakeRuleControlService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
 
-                def read_routes(self):
-                    return {"rules": []}
-
-                def write_routes(self, data):
-                    writes.append(data)
-                    return data
+                async def save_rule(self, body):
+                    calls.append(("save", body))
+                    return {"ok": True, "name": body["name"]}
 
             try:
-                mp.setattr("agentmind.panel.server.ConfigService", FakeConfigService)
+                mp.setattr("agentmind.panel.server.RuleControlService", FakeRuleControlService, raising=False)
                 resp = client.post("/panel/api/rules", json={
                     "name": "route-a",
                     "type": "keyword",
@@ -1100,16 +1097,44 @@ class TestPanelConfigServiceUsage:
                     "tags": ["demo"],
                 })
                 assert resp.status_code == 200
-                assert resp.json()["ok"] is True
-                assert writes == [{
-                    "rules": [{
-                        "name": "route-a",
-                        "type": "keyword",
-                        "patterns": ["hello"],
-                        "target_tags": ["general"],
-                        "priority": 10,
-                        "tags": ["demo"],
-                    }]
-                }]
+                assert resp.json() == {"ok": True, "name": "route-a"}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[0][1]["rule_engine"] is app.state.rule_engine
+                assert calls[1] == ("save", {
+                    "name": "route-a",
+                    "type": "keyword",
+                    "patterns": ["hello"],
+                    "target_tags": ["general"],
+                    "priority": 10,
+                    "tags": ["demo"],
+                })
+            finally:
+                mp.undo()
+
+    def test_rules_delete_uses_rule_control_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeRuleControlService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                async def delete_rule(self, name):
+                    calls.append(("delete", name))
+                    return {"ok": True}
+
+            try:
+                mp.setattr("agentmind.panel.server.RuleControlService", FakeRuleControlService, raising=False)
+                resp = client.delete("/panel/api/rules/route-a")
+                assert resp.status_code == 200
+                assert resp.json() == {"ok": True}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["config_service"] is not None
+                assert calls[0][1]["rule_engine"] is app.state.rule_engine
+                assert calls[1] == ("delete", "route-a")
             finally:
                 mp.undo()

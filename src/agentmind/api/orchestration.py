@@ -2,12 +2,12 @@
 
 import json
 import logging
-from collections import defaultdict, deque
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
+from agentmind.orchestration.engine import OrchestrationEngine
 from agentmind.storage.db import CONFIG_DIR
 from agentmind.memory.service import MemoryService
 
@@ -21,80 +21,21 @@ from agentmind.api.models import OrchestrationStep, OrchestrationPlan  # noqa: E
 
 # ========== 拓扑验证与排序 ==========
 
+_DEFAULT_ENGINE = OrchestrationEngine()
+
+
 def validate_dag(steps: list[OrchestrationStep]):
-    """DFS 检测循环依赖，存在则抛出 ValueError"""
-    visited: set[int] = set()
-    rec_stack: set[int] = set()
-    step_map = {s.step_id: s for s in steps}
-
-    def dfs(step_id: int):
-        if step_id in rec_stack:
-            raise ValueError(f"检测到循环依赖，涉及步骤 {step_id}")
-        if step_id in visited:
-            return
-        visited.add(step_id)
-        rec_stack.add(step_id)
-        step = step_map.get(step_id)
-        if step:
-            for dep in step.depends_on:
-                dfs(dep)
-        rec_stack.discard(step_id)
-
-    for s in steps:
-        dfs(s.step_id)
+    return _DEFAULT_ENGINE.validate_dag(steps)
 
 
 def topological_sort(steps: list[OrchestrationStep]) -> list[OrchestrationStep]:
-    """Kahn 算法拓扑排序，返回可顺序执行的步骤列表"""
-    in_degree: dict[int, int] = defaultdict(int)
-    children: dict[int, list[int]] = defaultdict(list)
-    step_map = {s.step_id: s for s in steps}
-
-    for s in steps:
-        for dep in s.depends_on:
-            in_degree[s.step_id] += 1
-            children[dep].append(s.step_id)
-
-    queue = deque([s.step_id for s in steps if in_degree[s.step_id] == 0])
-    sorted_steps: list[OrchestrationStep] = []
-
-    while queue:
-        sid = queue.popleft()
-        step = step_map[sid]
-        sorted_steps.append(step)
-        for child in children[sid]:
-            in_degree[child] -= 1
-            if in_degree[child] == 0:
-                queue.append(child)
-
-    if len(sorted_steps) != len(steps):
-        raise ValueError("拓扑排序失败，可能存在循环依赖")
-    return sorted_steps
+    return _DEFAULT_ENGINE.topological_sort(steps)
 
 
 # ========== 上下文注入 ==========
 
 def build_contextual_instruction(step: OrchestrationStep, previous_results: dict[int, str]) -> str:
-    """将前置步骤结果注入当前步骤的 Prompt"""
-    if not step.depends_on:
-        return step.instruction
-
-    parts = []
-    for dep_id in step.depends_on:
-        if dep_id in previous_results:
-            parts.append(f"前置步骤 {dep_id} 的输出：\n{previous_results[dep_id]}")
-
-    if not parts:
-        return step.instruction
-
-    injected = "\n\n".join(parts)
-    return (
-        f"[系统注入：前置依赖的执行结果摘要]\n"
-        f"{injected}\n\n"
-        f"（注意：以上内容可能被截断，如需完整细节请通过记忆检索获取）\n\n"
-        f"请基于以上前置结果，执行当前任务：\n"
-        f"{step.instruction}"
-    )
+    return _DEFAULT_ENGINE.build_contextual_instruction(step, previous_results)
 
 
 # ========== 步骤记忆写入 ==========

@@ -14,6 +14,7 @@ from agentmind.services.routing_explanation_service import RoutingExplanationSer
 from agentmind.services.rule_control_service import RuleControlService
 from agentmind.services.settings_control_service import SettingsControlService
 from agentmind.services.settings_status_service import SettingsStatusService
+from agentmind.services.session_runtime_service import SessionRuntimeService
 from agentmind.services.task_explanation_service import TaskExplanationService
 from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
@@ -86,6 +87,12 @@ def _settings_status_service():
 
 def _connector_discovery_service():
     return ConnectorDiscoveryService()
+
+
+def _session_runtime_service(request: Request):
+    return SessionRuntimeService(
+        attach_registry=getattr(request.app.state, "attach_registry", None),
+    )
 
 
 def create_panel_router() -> APIRouter:
@@ -348,18 +355,8 @@ def create_panel_router() -> APIRouter:
     # === 活跃会话 ===
 
     @router.get("/sessions")
-    async def active_sessions():
-        from agentmind.routing.side_effects.session_registry import session_registry
-        discussions = []
-        for uid, disc in session_registry.list_discussions().items():
-            discussions.append({"user_id": uid, "stop": disc.get("stop", False)})
-        # 最近执行中的任务（用同步版本）
-        import asyncio as _aio
-        tasks = await _aio.to_thread(
-            __import__("agentmind.storage.db", fromlist=["_query_tasks_sync"])._query_tasks_sync,
-            limit=5, status="executing",
-        )
-        return {"discussions": discussions, "executing_tasks": tasks}
+    async def active_sessions(request: Request):
+        return await _session_runtime_service(request).active_sessions()
 
     # === 通用设置（memory + embedding）===
 
@@ -389,34 +386,12 @@ def create_panel_router() -> APIRouter:
     @router.post("/tasks/{trace_id}/attach")
     async def attach_to_task(trace_id: str, request: Request):
         session_id = request.query_params.get("session_id", "")
-        if not session_id:
-            return {"error": "缺少 session_id 参数"}
-        attach_registry = getattr(request.app.state, "attach_registry", None)
-        if not attach_registry:
-            return {"error": "Attach 功能未启用"}
-        attach_registry.bind(session_id, trace_id)
-        return {"status": "attached", "trace_id": trace_id}
+        return _session_runtime_service(request).attach_to_task(trace_id, session_id)
 
     # === v2.0 Peek 实时流 ===
 
     @router.get("/tasks/{trace_id}/stream")
-    async def panel_task_stream(trace_id: str):
-        from agentmind.routing.side_effects.session_registry import session_registry as _sr
-        register_stream_listener = _sr.register_stream_listener
-        unregister_stream_listener = _sr.unregister_stream_listener
-
-        queue = register_stream_listener(trace_id)
-
-        async def event_gen():
-            try:
-                while True:
-                    chunk = await queue.get()
-                    if chunk is None:
-                        break
-                    yield chunk
-            finally:
-                unregister_stream_listener(trace_id, queue)
-
-        return EventSourceResponse(event_gen())
+    async def panel_task_stream(trace_id: str, request: Request):
+        return EventSourceResponse(_session_runtime_service(request).stream_events(trace_id))
 
     return router

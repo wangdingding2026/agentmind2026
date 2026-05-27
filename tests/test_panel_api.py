@@ -1243,6 +1243,101 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
+    def test_sessions_endpoint_uses_session_runtime_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            attach_registry = object()
+            app.state.attach_registry = attach_registry
+            client = TestClient(app)
+            calls = []
+
+            class FakeSessionRuntimeService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                async def active_sessions(self):
+                    calls.append(("sessions",))
+                    return {
+                        "discussions": [{"user_id": "u1", "stop": False}],
+                        "executing_tasks": [{"trace_id": "t1"}],
+                    }
+
+            try:
+                mp.setattr("agentmind.panel.server.SessionRuntimeService", FakeSessionRuntimeService, raising=False)
+                resp = client.get("/panel/api/sessions")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "discussions": [{"user_id": "u1", "stop": False}],
+                    "executing_tasks": [{"trace_id": "t1"}],
+                }
+                assert calls[0][0] == "init"
+                assert calls[0][1]["attach_registry"] is attach_registry
+                assert calls[1] == ("sessions",)
+            finally:
+                mp.undo()
+
+    def test_attach_endpoint_uses_session_runtime_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            attach_registry = object()
+            app.state.attach_registry = attach_registry
+            client = TestClient(app)
+            calls = []
+
+            class FakeSessionRuntimeService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def attach_to_task(self, trace_id, session_id):
+                    calls.append(("attach", trace_id, session_id))
+                    return {"status": "attached", "trace_id": trace_id}
+
+            try:
+                mp.setattr("agentmind.panel.server.SessionRuntimeService", FakeSessionRuntimeService, raising=False)
+                resp = client.post("/panel/api/tasks/t1/attach?session_id=s1")
+                assert resp.status_code == 200
+                assert resp.json() == {"status": "attached", "trace_id": "t1"}
+                assert calls[0][0] == "init"
+                assert calls[0][1]["attach_registry"] is attach_registry
+                assert calls[1] == ("attach", "t1", "s1")
+            finally:
+                mp.undo()
+
+    def test_task_stream_endpoint_uses_session_runtime_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            attach_registry = object()
+            app.state.attach_registry = attach_registry
+            client = TestClient(app)
+            calls = []
+
+            class FakeSessionRuntimeService:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def stream_events(self, trace_id):
+                    calls.append(("stream", trace_id))
+
+                    async def event_gen():
+                        yield {"event": "partial", "data": "hello"}
+
+                    return event_gen()
+
+            try:
+                mp.setattr("agentmind.panel.server.SessionRuntimeService", FakeSessionRuntimeService, raising=False)
+                with client.stream("GET", "/panel/api/tasks/t1/stream") as resp:
+                    assert resp.status_code == 200
+                    assert "text/event-stream" in resp.headers["content-type"]
+                    assert "hello" in next(resp.iter_text())
+                assert calls[0][0] == "init"
+                assert calls[0][1]["attach_registry"] is attach_registry
+                assert calls[1] == ("stream", "t1")
+            finally:
+                mp.undo()
+
     def test_rules_save_uses_rule_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

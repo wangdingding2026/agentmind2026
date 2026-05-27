@@ -43,6 +43,9 @@ These handlers are already migrated and should stay service delegated:
 - `get_settings`
 - `save_settings`
 - `embedding_status`
+- `active_sessions`
+- `attach_to_task`
+- `panel_task_stream`
 
 For these handlers, panel must not:
 
@@ -61,18 +64,15 @@ These handlers still contain direct runtime/read-side logic and are intentionall
 - `feishu_connect`
 - `feishu_disconnect`
 - `feishu_status`
-- `active_sessions`
-- `attach_to_task`
-- `panel_task_stream`
 
 Current boundary notes:
 
 - `feishu_connect`, `feishu_disconnect`, and `feishu_status` belong with Phase 4 `ChannelHub` because they own channel lifecycle, app state, and adapter health.
-- `active_sessions`, `attach_to_task`, and `panel_task_stream` should move behind a session/stream runtime service when that runtime state is made recoverable.
+- `active_sessions`, `attach_to_task`, and `panel_task_stream` now delegate to `SessionRuntimeService`; the underlying in-process runtime state still needs a later persistence/recovery package.
 
 ## Next Migration Direction
 
 The next package should pick one runtime boundary and convert it to a service without widening panel responsibilities. The preferred order is:
 
-1. Session/stream runtime service for attach and active sessions.
-2. ChannelHub-backed Feishu lifecycle migration.
+1. ChannelHub-backed Feishu lifecycle migration.
+2. Persistence/recovery for session and stream runtime state.

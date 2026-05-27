@@ -40,15 +40,15 @@ SERVICE_BACKED_HANDLERS = {
     "get_settings",
     "save_settings",
     "embedding_status",
+    "active_sessions",
+    "attach_to_task",
+    "panel_task_stream",
 }
 
 REQUIRED_TRANSITION_HANDLERS = {
     "feishu_connect",
     "feishu_disconnect",
     "feishu_status",
-    "active_sessions",
-    "attach_to_task",
-    "panel_task_stream",
 }
 
 FORBIDDEN_SERVICE_BACKED_PATTERNS = {

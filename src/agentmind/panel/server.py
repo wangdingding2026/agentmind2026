@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
 from agentmind.services.agent_config_service import AgentConfigService
+from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
 from agentmind.memory.service import MemoryService
 from agentmind.services.trace_service import TraceService
@@ -51,6 +52,27 @@ def create_panel_router() -> APIRouter:
         if trace is None:
             raise HTTPException(status_code=404, detail="Trace not found")
         return trace
+
+    @router.get("/audit/events")
+    async def audit_events(
+        limit: int = 50,
+        module: str = "",
+        action: str = "",
+        agent_id: str = "",
+        risk_level: str = "",
+        trace_id: str = "",
+        actor: str = "",
+    ):
+        events = await AuditService().query_events(
+            limit=limit,
+            module=module,
+            action=action,
+            agent_id=agent_id,
+            risk_level=risk_level,
+            trace_id=trace_id,
+            actor=actor,
+        )
+        return {"events": events}
 
     @router.get("/routing/strategies")
     async def routing_strategies(request: Request):

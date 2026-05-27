@@ -171,6 +171,41 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_audit_events_endpoint_uses_audit_service(self):
+        calls = []
+
+        class FakeAuditService:
+            async def query_events(self, **kwargs):
+                calls.append(kwargs)
+                return [{"event_id": "e1", "module": "config", "action": "update"}]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr("agentmind.panel.server.AuditService", FakeAuditService, raising=False)
+            client = TestClient(app)
+            try:
+                resp = client.get(
+                    "/panel/api/audit/events"
+                    "?module=config&action=update&agent_id=a1"
+                    "&risk_level=medium&trace_id=t1&actor=system&limit=7"
+                )
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "events": [{"event_id": "e1", "module": "config", "action": "update"}]
+                }
+                assert calls == [{
+                    "limit": 7,
+                    "module": "config",
+                    "action": "update",
+                    "agent_id": "a1",
+                    "risk_level": "medium",
+                    "trace_id": "t1",
+                    "actor": "system",
+                }]
+            finally:
+                mp.undo()
+
     def test_agent_toggle(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

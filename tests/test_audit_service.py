@@ -62,6 +62,22 @@ async def test_audit_service_query_filters_and_orders_newest_first(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_audit_service_query_filters_by_action_and_limit(tmp_path):
+    from agentmind.services.audit_service import AuditService
+
+    service = AuditService(str(tmp_path / "trace.db"))
+    await service.record_event(module="config", action="create", message="first")
+    await service.record_event(module="config", action="update", message="second")
+    await service.record_event(module="config", action="update", message="third")
+
+    events = await service.query_events(module="config", action="update", limit=1)
+
+    assert len(events) == 1
+    assert events[0]["action"] == "update"
+    assert events[0]["message"] == "third"
+
+
+@pytest.mark.asyncio
 async def test_audit_service_record_routing_decision_helper(tmp_path):
     from agentmind.services.audit_service import AuditService
 

@@ -38,4 +38,4 @@ Phase 4 closure is guarded by ChannelHub, Feishu adapter, startup, panel boundar
 
 ## Next Direction
 
-Start Phase 5 readiness only after this closure audit remains green.
+Start Phase 5 readiness in `docs/phase5/phase-5-readiness.md` only after this closure audit remains green.

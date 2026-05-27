@@ -42,6 +42,12 @@ live SSE listener queues are not persisted or restored.
 
 Persistent task-event replay should replay stored task timeline events, not reconstruct live SSE listener queues.
 
+## Skeleton Status
+
+TaskEventService owns the local task-event storage contract and the first event vocabulary.
+
+TaskEventService is not yet wired into runtime event production, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior.
+
 ## Explicit Non-Goals
 
 - no observability UI in this package;

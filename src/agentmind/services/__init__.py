@@ -8,6 +8,7 @@ from agentmind.services.orchestration_service import OrchestrationService
 from agentmind.services.routing_explanation_service import RoutingExplanationService
 from agentmind.services.rule_control_service import RuleControlService
 from agentmind.services.settings_control_service import SettingsControlService
+from agentmind.services.task_event_service import TaskEventService
 from agentmind.services.task_explanation_service import TaskExplanationService
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "RoutingExplanationService",
     "RuleControlService",
     "SettingsControlService",
+    "TaskEventService",
     "TaskExplanationService",
 ]

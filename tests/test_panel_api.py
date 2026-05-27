@@ -1197,6 +1197,52 @@ class TestPanelConfigServiceUsage:
             finally:
                 mp.undo()
 
+    def test_connectors_endpoint_uses_connector_discovery_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            client = TestClient(app)
+            calls = []
+
+            class FakeConnectorDiscoveryService:
+                def __init__(self):
+                    calls.append(("init",))
+
+                def list_connectors(self):
+                    calls.append(("list",))
+                    return {
+                        "connectors": [
+                            {
+                                "id": "fake",
+                                "name": "Fake",
+                                "type": "cli",
+                                "tags": ["demo"],
+                                "description": "from service",
+                                "timeout": 10,
+                            }
+                        ]
+                    }
+
+            try:
+                mp.setattr("agentmind.panel.server.ConnectorDiscoveryService", FakeConnectorDiscoveryService, raising=False)
+                resp = client.get("/panel/api/connectors")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "connectors": [
+                        {
+                            "id": "fake",
+                            "name": "Fake",
+                            "type": "cli",
+                            "tags": ["demo"],
+                            "description": "from service",
+                            "timeout": 10,
+                        }
+                    ]
+                }
+                assert calls == [("init",), ("list",)]
+            finally:
+                mp.undo()
+
     def test_rules_save_uses_rule_control_service(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

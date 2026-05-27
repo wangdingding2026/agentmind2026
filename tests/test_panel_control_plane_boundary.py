@@ -31,6 +31,7 @@ SERVICE_BACKED_HANDLERS = {
     "memory_delete",
     "memory_cleanup",
     "service_metrics",
+    "list_connectors",
     "feishu_get_config",
     "feishu_save_config",
     "list_rules",
@@ -48,7 +49,6 @@ REQUIRED_TRANSITION_HANDLERS = {
     "active_sessions",
     "attach_to_task",
     "panel_task_stream",
-    "list_connectors",
 }
 
 FORBIDDEN_SERVICE_BACKED_PATTERNS = {

@@ -34,6 +34,7 @@ These handlers are already migrated and should stay service delegated:
 - `memory_delete`
 - `memory_cleanup`
 - `service_metrics`
+- `list_connectors`
 - `feishu_get_config`
 - `feishu_save_config`
 - `list_rules`
@@ -63,18 +64,15 @@ These handlers still contain direct runtime/read-side logic and are intentionall
 - `active_sessions`
 - `attach_to_task`
 - `panel_task_stream`
-- `list_connectors`
 
 Current boundary notes:
 
 - `feishu_connect`, `feishu_disconnect`, and `feishu_status` belong with Phase 4 `ChannelHub` because they own channel lifecycle, app state, and adapter health.
 - `active_sessions`, `attach_to_task`, and `panel_task_stream` should move behind a session/stream runtime service when that runtime state is made recoverable.
-- `list_connectors` should move behind a connector discovery service before connector marketplace behavior expands.
 
 ## Next Migration Direction
 
 The next package should pick one runtime boundary and convert it to a service without widening panel responsibilities. The preferred order is:
 
-1. Connector discovery service for the marketplace read view.
-2. Session/stream runtime service for attach and active sessions.
-3. ChannelHub-backed Feishu lifecycle migration.
+1. Session/stream runtime service for attach and active sessions.
+2. ChannelHub-backed Feishu lifecycle migration.

@@ -6,6 +6,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from agentmind.services.agent_config_service import AgentConfigService
 from agentmind.services.agent_control_service import AgentControlService
+from agentmind.services.connector_discovery_service import ConnectorDiscoveryService
 from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
 from agentmind.services.control_plane_overview_service import ControlPlaneOverviewService
@@ -81,6 +82,10 @@ def _settings_control_service():
 
 def _settings_status_service():
     return SettingsStatusService(config_service=ConfigService(CONFIG_DIR))
+
+
+def _connector_discovery_service():
+    return ConnectorDiscoveryService()
 
 
 def create_panel_router() -> APIRouter:
@@ -243,17 +248,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/connectors")
     async def list_connectors():
-        from agentmind.agents.discovery import KNOWN_AGENTS
-        return {
-            "connectors": [
-                {
-                    "id": p.id, "name": p.name, "type": p.type,
-                    "tags": p.tags, "description": f"自动发现：{', '.join(p.detect_commands)}",
-                    "timeout": p.timeout,
-                }
-                for p in KNOWN_AGENTS
-            ]
-        }
+        return _connector_discovery_service().list_connectors()
 
     # === v3.0 飞书通道 ===
 

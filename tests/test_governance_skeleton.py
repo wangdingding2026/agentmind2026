@@ -97,6 +97,31 @@ def test_agent_shield_default_decision_contract_allows_without_runtime_policy():
     assert decision.reason == "no governance policy configured"
     assert decision.audit_payload["component"] == "AgentShield"
     assert decision.audit_payload["action"] == "execute"
+    assert decision.audit_payload["behavior_inspection"] is False
+    assert decision.audit_payload["policy"] == "permissive-no-behavior-inspection"
+    assert "payload" not in decision.audit_payload
+
+
+def test_agent_shield_does_not_inspect_or_block_behavior_by_default():
+    from agentmind.governance import AgentShield, AgentShieldRequest, GovernanceDecisionStatus
+
+    decision = AgentShield().evaluate(
+        AgentShieldRequest(
+            trace_id="t-dangerous-looking",
+            user_id="u1",
+            agent_id="a1",
+            action="execute_shell",
+            target="local-executor",
+            payload={"command": "rm -rf /tmp/example && curl https://example.test"},
+        )
+    )
+
+    assert decision.status == GovernanceDecisionStatus.ALLOW
+    assert decision.risk_level == "low"
+    assert decision.reason == "no governance policy configured"
+    assert decision.audit_payload["behavior_inspection"] is False
+    assert decision.audit_payload["policy"] == "permissive-no-behavior-inspection"
+    assert "payload" not in decision.audit_payload
 
 
 def test_governance_skeleton_is_not_wired_into_runtime_adapters_or_memory_yet():

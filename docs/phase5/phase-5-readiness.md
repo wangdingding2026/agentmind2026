@@ -71,6 +71,8 @@ AgentShield start criteria must be satisfied after CPE entry criteria are clear:
 
 The first AgentShield package should define behavior-permission decisions and audit events before blocking broad classes of actions.
 
+Current AgentShield runtime policy is permissive and does not inspect behavior payloads, block commands, or require approval. It records only governance metadata such as action, target, policy name, and `behavior_inspection=false`.
+
 ## Compatibility Boundaries
 
 `feishu.route_callback` remains a bounded migration fallback.

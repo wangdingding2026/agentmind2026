@@ -58,3 +58,66 @@ def test_mask_sensitive_config_values(tmp_path):
     assert masked["nested"]["app_secret"] == "****"
     assert masked["nested"]["safe"] == "value"
     assert masked["items"][0]["token"] == "****"
+
+
+def test_config_service_audits_settings_updates_with_masked_payload(tmp_path):
+    calls = []
+
+    class FakeAuditService:
+        def _record_event_sync(self, **kwargs):
+            calls.append(kwargs)
+            return "audit-1"
+
+    service = ConfigService(tmp_path / "config", audit_service=FakeAuditService())
+
+    service.update_settings_sections({
+        "feishu": {"app_id": "app", "app_secret": "secret"},
+    })
+
+    assert calls == [{
+        "module": "config",
+        "action": "update",
+        "actor": "system",
+        "risk_level": "medium",
+        "status": "success",
+        "message": "config update: settings",
+        "payload": {
+            "area": "settings",
+            "data": {"feishu": {"app_id": "app", "app_secret": "****"}},
+        },
+    }]
+
+
+def test_config_service_audits_route_writes(tmp_path):
+    calls = []
+
+    class FakeAuditService:
+        def _record_event_sync(self, **kwargs):
+            calls.append(kwargs)
+            return "audit-1"
+
+    service = ConfigService(tmp_path / "config", audit_service=FakeAuditService())
+
+    service.write_routes({"rules": [{"name": "r1"}]})
+
+    assert calls[0]["module"] == "config"
+    assert calls[0]["action"] == "update"
+    assert calls[0]["message"] == "config update: routes"
+    assert calls[0]["payload"] == {
+        "area": "routes",
+        "data": {"rules": [{"name": "r1"}]},
+    }
+
+
+def test_config_service_audit_failure_does_not_prevent_write(tmp_path):
+    class FailingAuditService:
+        def _record_event_sync(self, **kwargs):
+            raise RuntimeError("audit unavailable")
+
+    config_dir = tmp_path / "config"
+    service = ConfigService(config_dir, audit_service=FailingAuditService())
+
+    saved = service.write_agents({"agents": [{"id": "a1"}]})
+
+    assert saved == {"agents": [{"id": "a1"}]}
+    assert yaml.safe_load((config_dir / "agents.yaml").read_text(encoding="utf-8")) == saved

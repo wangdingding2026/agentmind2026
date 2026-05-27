@@ -19,8 +19,9 @@ class ConfigService:
     reading, writing, validation, and masking without changing runtime behavior.
     """
 
-    def __init__(self, config_dir: Path | None = None):
+    def __init__(self, config_dir: Path | None = None, audit_service=None):
         self.config_dir = Path(config_dir) if config_dir is not None else CONFIG_DIR
+        self.audit_service = audit_service
         self._lock = threading.RLock()
 
     @property
@@ -69,7 +70,9 @@ class ConfigService:
     def write_settings(self, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(data, dict):
             raise ValueError("settings must be a dict")
-        return self._write_yaml(self.settings_path, data)
+        saved = self._write_yaml(self.settings_path, data)
+        self._record_config_audit("settings", saved)
+        return saved
 
     def update_settings_sections(self, sections: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(sections, dict):
@@ -77,7 +80,9 @@ class ConfigService:
         with self._lock:
             data = self.read_settings()
             data.update(sections)
-            return self.write_settings(data)
+            saved = self._write_yaml(self.settings_path, data)
+            self._record_config_audit("settings", sections)
+            return saved
 
     def write_agents(self, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(data, dict):
@@ -85,7 +90,9 @@ class ConfigService:
         agents = data.get("agents", [])
         if not isinstance(agents, list):
             raise ValueError("agents must be a list")
-        return self._write_yaml(self.agents_path, data)
+        saved = self._write_yaml(self.agents_path, data)
+        self._record_config_audit("agents", saved)
+        return saved
 
     def write_routes(self, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(data, dict):
@@ -93,7 +100,9 @@ class ConfigService:
         rules = data.get("rules", [])
         if not isinstance(rules, list):
             raise ValueError("rules must be a list")
-        return self._write_yaml(self.routes_path, data)
+        saved = self._write_yaml(self.routes_path, data)
+        self._record_config_audit("routes", saved)
+        return saved
 
     def write_orchestrations(self, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(data, dict):
@@ -101,7 +110,9 @@ class ConfigService:
         plans = data.get("plans", [])
         if not isinstance(plans, list):
             raise ValueError("plans must be a list")
-        return self._write_yaml(self.orchestrations_path, data)
+        saved = self._write_yaml(self.orchestrations_path, data)
+        self._record_config_audit("orchestrations", saved)
+        return saved
 
     def mask_sensitive(self, value: Any) -> Any:
         if isinstance(value, dict):
@@ -136,3 +147,25 @@ class ConfigService:
                 encoding="utf-8",
             )
             return data
+
+    def _record_config_audit(self, area: str, data: dict[str, Any]) -> None:
+        try:
+            audit_service = self.audit_service
+            if audit_service is None:
+                from agentmind.services.audit_service import AuditService
+
+                audit_service = AuditService()
+            audit_service._record_event_sync(
+                module="config",
+                action="update",
+                actor="system",
+                risk_level="medium",
+                status="success",
+                message=f"config update: {area}",
+                payload={
+                    "area": area,
+                    "data": self.mask_sensitive(data),
+                },
+            )
+        except Exception:
+            pass

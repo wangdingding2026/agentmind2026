@@ -8,9 +8,11 @@ from agentmind.services.agent_config_service import AgentConfigService
 from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
 from agentmind.services.routing_explanation_service import RoutingExplanationService
+from agentmind.services.task_explanation_service import TaskExplanationService
+from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
 from agentmind.services.trace_service import TraceService
-from agentmind.storage.db import CONFIG_DIR, get_metrics, get_task_detail, get_task_stats, get_recent_errors, query_tasks
+from agentmind.storage.db import CONFIG_DIR
 
 def _mask_config(config: dict) -> dict:
     """脱敏敏感配置字段，只返回 masked 值"""
@@ -35,26 +37,46 @@ def _strategy_manager(request: Request):
     return strategy_manager
 
 
+def _routing_explanation_service(request: Request):
+    from agentmind.services.capability_registry import AgentCapabilityRegistry
+
+    return RoutingExplanationService(
+        trace_service=TraceService(),
+        audit_service=AuditService(),
+        capability_registry=AgentCapabilityRegistry(request.app.state.agent_registry),
+        strategy_manager=_strategy_manager(request),
+    )
+
+
 def create_panel_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/tasks")
     async def list_tasks(limit: int = 20, offset: int = 0, status: str = None):
-        rows = await query_tasks(limit=limit, offset=offset, status=status)
+        rows = await TaskService().query_tasks(limit=limit, offset=offset, status=status)
         return {"tasks": rows}
 
     @router.get("/tasks/stats")
     async def task_stats():
-        return await get_task_stats()
+        return await TaskService().get_task_stats()
 
     @router.get("/tasks/recent-errors")
     async def recent_errors(limit: int = 5):
-        rows = await get_recent_errors(limit=limit)
+        rows = await TaskService().get_recent_errors(limit=limit)
         return {"errors": rows}
+
+    @router.get("/tasks/{trace_id}/explanation")
+    async def task_explanation(trace_id: str, request: Request):
+        service = TaskExplanationService(
+            task_service=TaskService(),
+            routing_explanation_service=_routing_explanation_service(request),
+            audit_service=AuditService(),
+        )
+        return await service.explain(trace_id)
 
     @router.get("/tasks/{trace_id}")
     async def task_detail(trace_id: str):
-        row = await get_task_detail(trace_id)
+        row = await TaskService().get_task_detail(trace_id)
         if row is None:
             raise HTTPException(status_code=404, detail="Task not found")
         return row
@@ -89,15 +111,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/routing/explanations/{trace_id}")
     async def routing_explanation(trace_id: str, request: Request):
-        from agentmind.services.capability_registry import AgentCapabilityRegistry
-
-        service = RoutingExplanationService(
-            trace_service=TraceService(),
-            audit_service=AuditService(),
-            capability_registry=AgentCapabilityRegistry(request.app.state.agent_registry),
-            strategy_manager=_strategy_manager(request),
-        )
-        return await service.explain(trace_id)
+        return await _routing_explanation_service(request).explain(trace_id)
 
     @router.get("/routing/strategies")
     async def routing_strategies(request: Request):
@@ -198,7 +212,7 @@ def create_panel_router() -> APIRouter:
     @router.get("/service/status")
     async def service_status(request: Request):
         registry = request.app.state.agent_registry
-        stats = await get_task_stats()
+        stats = await TaskService().get_task_stats()
         agents = list(registry.executors.values())
         return {
             "agents_total": len(agents),
@@ -234,7 +248,7 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/service/metrics")
     async def service_metrics():
-        return await get_metrics()
+        return await TaskService().get_metrics()
 
     # === v2.0 连接器市场 ===
 

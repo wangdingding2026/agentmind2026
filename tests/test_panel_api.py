@@ -254,6 +254,106 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_task_explanation_endpoint_uses_service(self):
+        calls = []
+
+        class FakeTaskExplanationService:
+            def __init__(
+                self,
+                *,
+                task_service=None,
+                routing_explanation_service=None,
+                audit_service=None,
+            ):
+                calls.append({
+                    "task_service": task_service,
+                    "routing_explanation_service": routing_explanation_service,
+                    "audit_service": audit_service,
+                })
+
+            async def explain(self, trace_id):
+                calls.append({"trace_id": trace_id})
+                return {
+                    "trace_id": trace_id,
+                    "found": True,
+                    "status": "failed",
+                    "stage": "execution",
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr(
+                "agentmind.panel.server.TaskExplanationService",
+                FakeTaskExplanationService,
+                raising=False,
+            )
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/tasks/t1/explanation")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "trace_id": "t1",
+                    "found": True,
+                    "status": "failed",
+                    "stage": "execution",
+                }
+                assert calls[0]["task_service"] is not None
+                assert calls[0]["routing_explanation_service"] is not None
+                assert calls[0]["audit_service"] is not None
+                assert calls[1] == {"trace_id": "t1"}
+            finally:
+                mp.undo()
+
+    def test_task_read_endpoints_use_task_service(self):
+        calls = []
+
+        class FakeTaskService:
+            async def query_tasks(self, limit=20, offset=0, status=None):
+                calls.append(("query", limit, offset, status))
+                return [{"trace_id": "t1", "status": status or "completed"}]
+
+            async def get_task_stats(self):
+                calls.append(("stats",))
+                return {"total": 1, "completed": 1}
+
+            async def get_recent_errors(self, limit=5):
+                calls.append(("errors", limit))
+                return [{"trace_id": "e1", "error_message": "boom"}]
+
+            async def get_task_detail(self, trace_id):
+                calls.append(("detail", trace_id))
+                return {"trace_id": trace_id, "status": "completed"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr("agentmind.panel.server.TaskService", FakeTaskService, raising=False)
+            client = TestClient(app)
+            try:
+                assert client.get("/panel/api/tasks?limit=3&offset=2&status=failed").json() == {
+                    "tasks": [{"trace_id": "t1", "status": "failed"}]
+                }
+                assert client.get("/panel/api/tasks/stats").json() == {
+                    "total": 1,
+                    "completed": 1,
+                }
+                assert client.get("/panel/api/tasks/recent-errors?limit=4").json() == {
+                    "errors": [{"trace_id": "e1", "error_message": "boom"}]
+                }
+                assert client.get("/panel/api/tasks/t1").json() == {
+                    "trace_id": "t1",
+                    "status": "completed",
+                }
+                assert calls == [
+                    ("query", 3, 2, "failed"),
+                    ("stats",),
+                    ("errors", 4),
+                    ("detail", "t1"),
+                ]
+            finally:
+                mp.undo()
+
     def test_agent_toggle(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

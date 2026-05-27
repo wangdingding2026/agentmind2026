@@ -212,3 +212,82 @@ def test_channel_hub_reports_feishu_status():
     app.state.feishu_adapter = _Adapter()
 
     assert ChannelHub().feishu_status(app) == {"enabled": True, "connected": True}
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_skips_feishu_auto_start_when_config_disabled():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    hub = ChannelHub(config_service=_ConfigService())
+
+    result = await hub.maybe_start_feishu(
+        app,
+        {"feishu": {"enabled": False, "app_id": "app", "app_secret": "secret"}},
+    )
+
+    assert result is None
+    assert not hasattr(app.state, "feishu_adapter")
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_auto_starts_feishu_from_settings():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    config_service = _ConfigService()
+    created = []
+
+    def adapter_factory(**kwargs):
+        created.append(kwargs)
+        return _Adapter()
+
+    async def route_stream_func(*args, **kwargs):
+        yield "ok"
+
+    hub = ChannelHub(
+        config_service=config_service,
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+
+    result = await hub.maybe_start_feishu(
+        app,
+        {"feishu": {"enabled": True, "app_id": " app ", "app_secret": " secret "}},
+    )
+
+    assert result is app.state.feishu_adapter
+    assert result.started == 1
+    assert created[0]["app_id"] == "app"
+    assert created[0]["app_secret"] == "secret"
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_feishu_callback_provides_send_func_to_routing():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    adapter = _Adapter()
+    captured = {}
+
+    def adapter_factory(**kwargs):
+        captured["callback"] = kwargs["route_callback"]
+        return adapter
+
+    async def route_stream_func(*args, **kwargs):
+        await kwargs["send_func"]("side effect reply")
+        yield "ok"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    chunks = []
+    async for chunk in captured["callback"]("hello", "u1"):
+        chunks.append(chunk)
+
+    assert chunks == ["ok"]
+    assert adapter.sent == [("u1", "side effect reply")]

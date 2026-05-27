@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from agentmind.agents.discovery import discover_and_generate
 from agentmind.agents.registry import AgentRegistry
+from agentmind.channels.hub import ChannelHub
 from agentmind.config.defaults import generate_default_configs
 from agentmind.core.rule_engine import RuleEngine
 from agentmind.memory.workers.scheduler import MemoryWorkerScheduler
@@ -119,46 +120,12 @@ async def _periodic_workspace_cleanup(data_home: Path):
             pass
 
 
-async def _maybe_start_feishu(app: FastAPI, settings: dict[str, Any]):
-    feishu_cfg = settings.get("feishu", {}) if isinstance(settings, dict) else {}
-    if not (
-        feishu_cfg.get("enabled")
-        and feishu_cfg.get("app_id")
-        and feishu_cfg.get("app_secret")
-    ):
-        return None
-    try:
-        from agentmind.channels.feishu import FeishuAdapter
-        from agentmind.api.router import route_stream
-
-        feishu_adapter = None
-
-        async def feishu_callback(msg: str, sender_id: str):
-            async def _send(text: str):
-                if feishu_adapter:
-                    await feishu_adapter.send_message(sender_id, text)
-
-            async for chunk in route_stream(
-                msg,
-                sender_id,
-                app.state.agent_registry,
-                app.state.rule_engine,
-                app.state.settings,
-                send_func=_send,
-            ):
-                yield chunk
-
-        feishu_adapter = FeishuAdapter(
-            app_id=feishu_cfg["app_id"],
-            app_secret=feishu_cfg["app_secret"],
-            route_callback=feishu_callback,
-        )
-        await feishu_adapter.start()
-        logger.info("飞书通道已启动")
-        return feishu_adapter
-    except Exception as e:
-        logger.warning("飞书通道启动失败: %s", e)
-        return None
+async def _maybe_start_feishu(
+    app: FastAPI,
+    settings: dict[str, Any],
+    config_service: ConfigService,
+):
+    return await ChannelHub(config_service=config_service).maybe_start_feishu(app, settings)
 
 
 @dataclass(slots=True)
@@ -195,7 +162,11 @@ class AgentMindBootstrapper:
             scheduler = MemoryWorkerScheduler()
             app.state.memory_scheduler = scheduler
             worker_task = asyncio.create_task(scheduler.start(settings))
-            feishu_adapter = await _maybe_start_feishu(app, settings)
+            feishu_adapter = await _maybe_start_feishu(
+                app,
+                settings,
+                config_service=config_service,
+            )
             if feishu_adapter is not None:
                 app.state.feishu_adapter = feishu_adapter
 

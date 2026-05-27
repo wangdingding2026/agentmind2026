@@ -32,3 +32,30 @@ def test_bootstrapper_builds_app_and_keeps_state_local(tmp_path):
     assert app.state.agent_registry is not None
     assert app.state.rule_engine is not None
     assert app.state.settings["feishu"]["enabled"] is False
+
+
+def test_startup_maybe_start_feishu_delegates_to_channel_hub(monkeypatch):
+    import asyncio
+    import agentmind.startup as startup
+
+    calls = []
+
+    class FakeHub:
+        def __init__(self, config_service):
+            self.config_service = config_service
+
+        async def maybe_start_feishu(self, app, settings):
+            calls.append((self.config_service, app, settings))
+            return "adapter"
+
+    app = type("App", (), {"state": object()})()
+    config_service = object()
+    settings = {"feishu": {"enabled": True, "app_id": "app", "app_secret": "secret"}}
+    monkeypatch.setattr(startup, "ChannelHub", FakeHub)
+
+    result = asyncio.run(
+        startup._maybe_start_feishu(app, settings, config_service=config_service)
+    )
+
+    assert result == "adapter"
+    assert calls == [(config_service, app, settings)]

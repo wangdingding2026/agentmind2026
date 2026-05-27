@@ -67,12 +67,12 @@ No panel handlers are currently classified as transition boundaries.
 Current boundary notes:
 
 - `feishu_connect`, `feishu_disconnect`, and `feishu_status` now delegate to Phase 4 `ChannelHub`.
+- Startup Feishu auto-start now delegates to Phase 4 `ChannelHub`; startup remains a lifecycle adapter.
 - `active_sessions`, `attach_to_task`, and `panel_task_stream` now delegate to `SessionRuntimeService`; the underlying in-process runtime state still needs a later persistence/recovery package.
 
 ## Next Migration Direction
 
 The next package should pick one runtime boundary below the panel and convert it without widening panel responsibilities. The preferred order is:
 
-1. Startup Feishu auto-start through `ChannelHub`.
-2. FeishuAdapter message processing through standard `ChannelMessage`.
-3. Persistence/recovery for session and stream runtime state.
+1. FeishuAdapter message processing through standard `ChannelMessage`.
+2. Persistence/recovery for session and stream runtime state.

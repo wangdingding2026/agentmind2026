@@ -145,6 +145,24 @@ class ChannelHub:
             "connected": self._is_adapter_connected(adapter),
         }
 
+    async def maybe_start_feishu(self, app: Any, settings: dict[str, Any]):
+        feishu_cfg = settings.get("feishu", {}) if isinstance(settings, dict) else {}
+        if not (
+            feishu_cfg.get("enabled")
+            and feishu_cfg.get("app_id")
+            and feishu_cfg.get("app_secret")
+        ):
+            return None
+
+        result = await self.connect_feishu(
+            app,
+            str(feishu_cfg["app_id"]),
+            str(feishu_cfg["app_secret"]),
+        )
+        if result.get("ok"):
+            return getattr(app.state, "feishu_adapter", None)
+        return None
+
     @staticmethod
     def _unknown_channel_result(channel_id: str) -> dict[str, Any]:
         return {
@@ -167,12 +185,18 @@ class ChannelHub:
         route_stream_func = self._route_stream_func or self._default_route_stream_func
 
         async def feishu_callback(msg: str, sender_id: str):
+            async def _send(text: str):
+                adapter = getattr(app.state, "feishu_adapter", None)
+                if adapter:
+                    await adapter.send_message(sender_id, text)
+
             async for chunk in route_stream_func(
                 msg,
                 sender_id,
                 app.state.agent_registry,
                 app.state.rule_engine,
                 app.state.settings,
+                send_func=_send,
             ):
                 yield chunk
 

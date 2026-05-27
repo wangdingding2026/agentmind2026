@@ -35,7 +35,7 @@ Service-backed panel handlers are guarded by `tests/test_panel_control_plane_bou
 
 No panel handlers are currently documented as transition handlers.
 
-`feishu_connect`, `feishu_disconnect`, and `feishu_status` now delegate to Phase 4 `ChannelHub`. Feishu startup auto-start and adapter message-processing internals remain below the panel and should be migrated in later Phase 4 packages.
+`feishu_connect`, `feishu_disconnect`, `feishu_status`, and startup Feishu auto-start now delegate to Phase 4 `ChannelHub`. Feishu adapter message-processing internals remain below the panel and should be migrated in a later Phase 4 package.
 
 ## Compatibility Boundaries
 
@@ -58,5 +58,6 @@ Completed first packages:
 2. Moved Feishu connect/disconnect/status from panel into `ChannelHub`.
 3. Kept panel as request adapter only.
 4. Added architecture tests that prevent channel lifecycle logic from returning to `panel/server.py`.
+5. Moved startup Feishu auto-start from `startup.py` direct adapter construction into `ChannelHub`.
 
-Next, migrate startup Feishu auto-start into `ChannelHub`, then move FeishuAdapter message handling toward standard `ChannelMessage`. After that, schedule persistence/recovery work for session and stream runtime state. That work should build on `SessionRuntimeService`; it should not move runtime state back into panel.
+Next, move FeishuAdapter message handling toward standard `ChannelMessage`. After that, schedule persistence/recovery work for session and stream runtime state. That work should build on `SessionRuntimeService`; it should not move runtime state back into panel.

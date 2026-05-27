@@ -204,7 +204,7 @@ class TestMaskConfig:
 
     def test_mask_list_of_dicts(self):
         """headers 列表中的敏感字段应被脱敏"""
-        from agentmind.panel.server import _mask_config
+        from agentmind.services.config_service import ConfigService
 
         config = {
             "endpoint": "http://api.example.com",
@@ -214,7 +214,7 @@ class TestMaskConfig:
             ],
             "body_template": {"model": "llama3"},
         }
-        masked = _mask_config(config)
+        masked = ConfigService().mask_sensitive(config)
         assert masked["endpoint"] == "http://api.example.com"
         assert masked["headers"][0]["Authorization"] == "****"
         assert masked["headers"][1]["Content-Type"] == "application/json"
@@ -222,7 +222,7 @@ class TestMaskConfig:
 
     def test_mask_nested_api_key(self):
         """嵌套 dict 中的 api_key 应被脱敏"""
-        from agentmind.panel.server import _mask_config
+        from agentmind.services.config_service import ConfigService
 
         config = {
             "connection": {
@@ -232,16 +232,16 @@ class TestMaskConfig:
                 }
             }
         }
-        masked = _mask_config(config)
+        masked = ConfigService().mask_sensitive(config)
         assert masked["connection"]["auth"]["api_key"] == "****"
         assert masked["connection"]["auth"]["timeout"] == 30
 
     def test_mask_top_level_token(self):
         """顶层 token 字段应被脱敏"""
-        from agentmind.panel.server import _mask_config
+        from agentmind.services.config_service import ConfigService
 
         config = {"token": "my-secret-token", "other": "visible"}
-        masked = _mask_config(config)
+        masked = ConfigService().mask_sensitive(config)
         assert masked["token"] == "****"
         assert masked["other"] == "visible"
 

@@ -112,6 +112,41 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_agents_endpoint_uses_agent_control_service(self):
+        calls = []
+
+        class FakeAgentControlService:
+            def __init__(self, agent_registry, config_service=None, config_dir=None):
+                calls.append({
+                    "agent_registry": agent_registry,
+                    "config_service": config_service,
+                    "config_dir": config_dir,
+                })
+
+            def list_agents(self):
+                calls.append(("list_agents",))
+                return [{"id": "from_service", "healthy": True}]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr(
+                "agentmind.panel.server.AgentControlService",
+                FakeAgentControlService,
+                raising=False,
+            )
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/agents")
+                assert resp.status_code == 200
+                assert resp.json() == {"agents": [{"id": "from_service", "healthy": True}]}
+                assert calls[0]["agent_registry"] is app.state.agent_registry
+                assert calls[0]["config_service"] is not None
+                assert calls[0]["config_dir"] is None
+                assert calls[1] == ("list_agents",)
+            finally:
+                mp.undo()
+
     def test_agent_capabilities_endpoint(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
 from agentmind.services.agent_config_service import AgentConfigService
+from agentmind.services.agent_control_service import AgentControlService
 from agentmind.services.audit_service import AuditService
 from agentmind.services.config_service import ConfigService
 from agentmind.services.control_plane_overview_service import ControlPlaneOverviewService
@@ -14,10 +15,6 @@ from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
 from agentmind.services.trace_service import TraceService
 from agentmind.storage.db import CONFIG_DIR
-
-def _mask_config(config: dict) -> dict:
-    """脱敏敏感配置字段，只返回 masked 值"""
-    return ConfigService(CONFIG_DIR).mask_sensitive(config)
 
 
 async def _reload_rule_engine(rule_engine):
@@ -136,26 +133,11 @@ def create_panel_router() -> APIRouter:
 
     @router.get("/agents")
     async def list_agents(request: Request):
-        registry = request.app.state.agent_registry
-        agents = []
-        for agent_id, executor in registry.executors.items():
-            cap = executor.capability
-            agents.append({
-                "id": agent_id,
-                "name": cap.name,
-                "type": cap.type,
-                "tags": cap.tags,
-                "enabled": cap.enabled,
-                "timeout": cap.timeout,
-                "healthy": executor.is_healthy,
-                "last_health_check": executor.last_health_check,
-                "description": cap.description,
-                "security_level": cap.security_level,
-                "estimated_cost": cap.estimated_cost,
-                "avg_latency": cap.avg_latency,
-                "config": _mask_config(cap.config),
-            })
-        return {"agents": agents}
+        service = AgentControlService(
+            request.app.state.agent_registry,
+            config_service=ConfigService(CONFIG_DIR),
+        )
+        return {"agents": service.list_agents()}
 
     @router.get("/agents/capabilities")
     async def list_agent_capabilities(request: Request):

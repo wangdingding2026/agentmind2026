@@ -337,3 +337,40 @@ async def test_channel_hub_feishu_standard_message_handler_routes_channel_messag
         app.state.settings,
     )
     assert adapter.sent == [("u1", "side effect reply")]
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_feishu_standard_message_handler_stops_active_discussion():
+    from agentmind.channels.hub import ChannelHub, ChannelMessage
+    from agentmind.routing.side_effects.session_registry import session_registry
+
+    app = _App()
+    adapter = _Adapter()
+    captured = {}
+    route_calls = []
+
+    def adapter_factory(**kwargs):
+        captured.update(kwargs)
+        return adapter
+
+    async def route_stream_func(*args, **kwargs):
+        route_calls.append((args, kwargs))
+        yield "should not route"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    session_registry.start_discussion("u1")
+    try:
+        result = await captured["message_callback"](
+            ChannelMessage(channel_id="feishu", sender_id="u1", text="stop")
+        )
+    finally:
+        session_registry.end_discussion("u1")
+
+    assert result == ["正在结束讨论..."]
+    assert route_calls == []

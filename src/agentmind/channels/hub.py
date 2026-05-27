@@ -96,6 +96,10 @@ class ChannelHub:
         return await self._message_handler(message)
 
     async def _handle_feishu_message(self, app: Any, message: ChannelMessage) -> list[str]:
+        stop_result = self._handle_feishu_discussion_stop(message)
+        if stop_result is not None:
+            return stop_result
+
         route_stream_func = self._route_stream_func or self._default_route_stream_func
 
         async def _send(text: str):
@@ -114,6 +118,24 @@ class ChannelHub:
         ):
             chunks.append(chunk)
         return chunks
+
+    def _handle_feishu_discussion_stop(self, message: ChannelMessage) -> list[str] | None:
+        if not self._is_discussion_stop_message(message.text):
+            return None
+
+        from agentmind.routing.side_effects.session_registry import session_registry
+
+        if not session_registry.is_discussion_active(message.sender_id):
+            return None
+
+        session_registry.stop_discussion(message.sender_id)
+        return ["正在结束讨论..."]
+
+    @staticmethod
+    def _is_discussion_stop_message(text: str) -> bool:
+        msg_text = str(text).strip().lower()
+        stop_words = ["停", "stop", "结束", "终止", "end"]
+        return any(word in msg_text for word in stop_words) and len(msg_text) <= 10
 
     async def connect_feishu(self, app: Any, app_id: str, app_secret: str) -> dict[str, Any]:
         app_id = app_id.strip()

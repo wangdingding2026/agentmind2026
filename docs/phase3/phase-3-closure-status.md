@@ -60,5 +60,6 @@ Completed first packages:
 4. Added architecture tests that prevent channel lifecycle logic from returning to `panel/server.py`.
 5. Moved startup Feishu auto-start from `startup.py` direct adapter construction into `ChannelHub`.
 6. Moved Feishu inbound message dispatch toward standard `ChannelMessage` with `ChannelHub` routing glue and legacy callback fallback.
+7. Moved Feishu discussion stop-word handling out of `FeishuAdapter` and behind the `ChannelHub` standard message boundary.
 
-Next, move the remaining FeishuAdapter business rule transition paths, especially discussion stop-word handling, out of the adapter and behind a service/channel message handler boundary. After that, schedule persistence/recovery work for session and stream runtime state. That work should build on `SessionRuntimeService`; it should not move runtime state back into panel.
+Next, continue moving remaining channel runtime concerns behind service/channel boundaries. The preferred next package is persistence/recovery for session and stream runtime state. That work should build on `SessionRuntimeService`; it should not move runtime state back into panel.

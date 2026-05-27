@@ -139,6 +139,39 @@ class TestFeishuStandardMessage:
         assert calls == [("hello", "u1")]
         assert sent == [("u1", "legacy reply", "m1")]
 
+    @pytest.mark.asyncio
+    async def test_feishu_adapter_sends_stop_words_to_standard_callback(self, monkeypatch):
+        from agentmind.channels.feishu import FeishuAdapter
+        from agentmind.routing.side_effects.session_registry import session_registry
+
+        session_registry.start_discussion("u1")
+        received = []
+
+        async def message_callback(message):
+            received.append(message)
+            return ["callback handled stop"]
+
+        adapter = FeishuAdapter("fake_id", "fake_secret", None, message_callback=message_callback)
+        await adapter._message_queue.put({"sender_id": "u1", "text": "stop", "msg_id": "m1"})
+        sent = []
+
+        async def send_message(user_id, content, root_msg_id=""):
+            sent.append((user_id, content, root_msg_id))
+            adapter._main_loop_task.cancel()
+
+        monkeypatch.setattr(adapter, "_add_reaction", AsyncMock(return_value="r1"))
+        monkeypatch.setattr(adapter, "_remove_reaction", AsyncMock())
+        monkeypatch.setattr(adapter, "send_message", send_message)
+
+        try:
+            adapter._main_loop_task = asyncio.create_task(adapter._process_messages())
+            await adapter._main_loop_task
+        finally:
+            session_registry.end_discussion("u1")
+
+        assert [(message.sender_id, message.text) for message in received] == [("u1", "stop")]
+        assert sent == [("u1", "callback handled stop", "m1")]
+
 
 class TestFeishuChunking:
     @pytest.mark.asyncio

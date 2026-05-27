@@ -234,18 +234,8 @@ class FeishuAdapter(ChannelAdapter):
 
                 logger.info("队列取出消息: sender=%s", msg.get("sender_id"))
 
-                # 讨论模式停止信号检测（模糊匹配）
-                msg_text = str(msg.get("text", "")).strip().lower()
-                stop_words = ["停", "stop", "结束", "终止", "end"]
-                is_stop = any(w in msg_text for w in stop_words) and len(msg_text) <= 10
-                if is_stop:
-                    from agentmind.routing.side_effects.session_registry import session_registry
-                    if session_registry.is_discussion_active(msg["sender_id"]):
-                        session_registry.stop_discussion(msg["sender_id"])
-                        await self.send_message(msg["sender_id"], "正在结束讨论...")
-                        continue
-
                 try:
+                    msg_text = str(msg.get("text", "")).strip().lower()
                     logger.info("开始处理飞书消息: sender=%s text=%s", msg["sender_id"], msg_text[:50])
                     root_id = msg.get("msg_id", "")
                     reaction_id = ""

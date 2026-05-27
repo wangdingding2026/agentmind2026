@@ -139,3 +139,37 @@ async def test_route_request_records_cpe_dry_run_without_changing_decision(monke
     assert len(calls) == 1
     assert calls[0].agent_id == "a1"
     assert calls[0].user_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_routing_cpe_dry_run_records_approval_required_for_sensitive_cloud(monkeypatch):
+    from agentmind.services import routing_service
+
+    calls = {}
+
+    class FakeAuditService:
+        async def record_cpe_decision(self, **kwargs):
+            calls["audit"] = kwargs
+
+    monkeypatch.setattr(routing_service, "AuditService", FakeAuditService)
+
+    request = routing_service._build_cpe_request_for_routing(
+        trace_id="t-sensitive-route",
+        user_id="u1",
+        agent_id="cloud_agent",
+        message="api_key='sk-abc123def456ghi789jkl012mno345pqr678stu'",
+        agent_registry=SimpleNamespace(
+            executors={
+                "cloud_agent": SimpleNamespace(
+                    capability=SimpleNamespace(security_level="cloud")
+                )
+            }
+        ),
+    )
+
+    await routing_service._record_cpe_routing_dry_run(request)
+
+    decision = calls["audit"]["decision"]
+    assert decision.status.value == "require_approval"
+    assert decision.risk_level == "high"
+    assert calls["audit"]["payload"] == {"surface": "routing", "mode": "dry_run"}

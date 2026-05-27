@@ -160,7 +160,7 @@ async def test_audit_service_record_cpe_decision_helper(tmp_path):
     assert events[0]["user_id"] == "u1"
     assert events[0]["agent_id"] == "cloud-agent"
     assert events[0]["risk_level"] == "high"
-    assert events[0]["status"] == "blocked"
+    assert events[0]["status"] == "approval_required"
     assert events[0]["message"] == "CPE decision: require_approval"
     assert events[0]["payload"] == {
         "component": "CPE",

@@ -178,7 +178,7 @@ class AuditService:
         }
         event_payload.update(decision.audit_payload or {})
         event_payload.update(payload or {})
-        status = "success" if decision_status == "allow" else "blocked"
+        status = self._cpe_event_status(decision_status)
         return await self.record_event(
             module="governance",
             action="cpe_decision",
@@ -191,6 +191,13 @@ class AuditService:
             message=f"CPE decision: {decision_status}",
             payload=event_payload,
         )
+
+    def _cpe_event_status(self, decision_status: str) -> str:
+        if decision_status == "allow":
+            return "success"
+        if decision_status == "require_approval":
+            return "approval_required"
+        return "blocked"
 
     async def query_events(
         self,

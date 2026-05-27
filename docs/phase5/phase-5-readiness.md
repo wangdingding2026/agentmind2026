@@ -54,6 +54,8 @@ RoutingExplanationService exposes CPE dry-run audit visibility as `governance_ev
 
 CPE policy v1 marks sensitive context routed to non-local agents as `require_approval`, but RoutingService still records this as dry-run audit only and does not enforce it.
 
+CPE audit event row status distinguishes `approval_required` from hard `blocked` decisions, so dry-run routing governance visibility cannot be mistaken for enforcement.
+
 The first CPE package should be a readiness-to-skeleton step, not broad routing or memory rewrites.
 
 ## AgentShield Start Criteria

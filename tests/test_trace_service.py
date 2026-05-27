@@ -101,11 +101,33 @@ async def test_trace_recorder_delegates_to_trace_service(monkeypatch):
 
     monkeypatch.setattr(trace_recorder, "TraceService", FakeTraceService)
 
+    class FakeAuditService:
+        async def record_routing_decision(self, **kwargs):
+            calls.append(("audit", kwargs))
+
+    monkeypatch.setattr(trace_recorder, "AuditService", FakeAuditService, raising=False)
+
     await TraceRecorder.record_decision("t1", _decision(), "u1")
 
     assert await TraceRecorder.get_trace("t1") == {"trace_id": "t1"}
     assert ("record", "t1", "a1", "u1") in calls
     assert ("get", "t1") in calls
+    assert ("audit", {
+        "trace_id": "t1",
+        "agent_id": "a1",
+        "strategy": "explicit",
+        "confidence": 0.85,
+        "actor": "system",
+        "user_id": "u1",
+        "risk_level": "low",
+        "payload": {
+            "fallback_chain": ["a2"],
+            "reply_text": "ok",
+            "raw_message": "hello",
+            "candidates": ["a1", "a2"],
+            "security_flagged": False,
+        },
+    }) in calls
 
 
 def test_panel_routing_trace_uses_trace_service(monkeypatch):

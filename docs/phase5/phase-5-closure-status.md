@@ -54,6 +54,6 @@ Phase 5 closure is guarded by governance skeleton, CPE dry-run, AuditService, Ph
 
 ## Next Direction
 
-Start Phase 6 readiness only after this closure audit remains green.
+Start task-event observability readiness in `docs/observability/task-event-readiness.md` only after this closure audit remains green.
 
-Phase 6 readiness should plan EvolutionEngine, TemplateMarket, and self-evolution entry conditions without starting Phase 6 implementation.
+The next package should define task-event boundaries before any persistent task-event replay, observability UI, or stream runtime changes.

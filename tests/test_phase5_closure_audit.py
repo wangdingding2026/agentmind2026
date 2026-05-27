@@ -27,7 +27,7 @@ REQUIRED_PHASE5_CLOSURE_MARKERS = {
     "bounded migration fallback",
     "persistent task-event replay",
     "observability/task-event",
-    "Phase 6 readiness",
+    "task-event observability readiness",
     "Phase 6 implementation has not started",
 }
 
@@ -53,8 +53,7 @@ def test_phase5_closure_document_names_required_boundaries():
     assert missing == []
 
 
-def test_phase5_readiness_points_to_phase5_closure_and_phase6_readiness():
+def test_phase5_readiness_points_to_phase5_closure():
     text = PHASE5_READINESS_DOC.read_text(encoding="utf-8")
 
     assert "docs/phase5/phase-5-closure-status.md" in text
-    assert "Phase 6 readiness" in text

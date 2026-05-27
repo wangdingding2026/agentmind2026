@@ -5,6 +5,7 @@ from typing import Any
 from agentmind.services.audit_service import AuditService
 from agentmind.services.routing_explanation_service import RoutingExplanationService
 from agentmind.services.task_service import TaskService
+from agentmind.services.task_timeline_service import TaskTimelineService
 
 
 class TaskExplanationService:
@@ -16,12 +17,14 @@ class TaskExplanationService:
         task_service=None,
         routing_explanation_service=None,
         audit_service=None,
+        task_timeline_service=None,
     ):
         self._task_service = task_service or TaskService()
         self._routing_explanation_service = (
             routing_explanation_service or RoutingExplanationService()
         )
         self._audit_service = audit_service or AuditService()
+        self._task_timeline_service = task_timeline_service or TaskTimelineService()
 
     async def explain(self, trace_id: str) -> dict[str, Any]:
         task = await self._task_service.get_task_detail(trace_id)
@@ -44,6 +47,7 @@ class TaskExplanationService:
                 trace_id=trace_id,
                 limit=20,
             ),
+            "timeline": await self._task_timeline_service.timeline(trace_id),
         }
 
     def _missing(self, trace_id: str) -> dict[str, Any]:
@@ -57,6 +61,12 @@ class TaskExplanationService:
             "task": None,
             "routing": None,
             "audit_events": [],
+            "timeline": {
+                "trace_id": trace_id,
+                "found": False,
+                "event_count": 0,
+                "timeline": [],
+            },
         }
 
     def _stage(self, task: dict[str, Any]) -> str:

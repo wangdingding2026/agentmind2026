@@ -50,6 +50,8 @@ TaskService now produces lifecycle task events through TaskEventService for task
 
 TaskTimelineService owns service-level task timeline DTO assembly over TaskEventService events.
 
+TaskExplanationService includes TaskTimelineService timeline data at the service layer.
+
 TaskEventService is not yet wired into partial output capture, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior beyond TaskService lifecycle production.
 
 ## Explicit Non-Goals

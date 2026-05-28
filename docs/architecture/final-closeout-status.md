@@ -64,7 +64,7 @@ AgentShield remains permissive and emits `behavior_inspection=false`.
 - no TemplateMarket work;
 - no API replay endpoint;
 - no advanced channel replay UX beyond Feishu `/replay <trace_id>` V1;
-- no observability UI;
+- no advanced observability UI beyond Panel Observability UI V1;
 - no stream runtime replay;
 - no live SSE listener queue persistence or restoration;
 - no new Feishu fallback behavior;
@@ -77,6 +77,8 @@ The rule is: future packages require separate implementation plans.
 Channel replay adapter readiness is tracked in `docs/observability/channel-replay-adapter-readiness.md`.
 
 Observability UI readiness is tracked in `docs/observability/observability-ui-readiness.md`.
+
+Observability product closeout is tracked in `docs/observability/observability-product-closeout-status.md`.
 
 Possible future product packages include:
 

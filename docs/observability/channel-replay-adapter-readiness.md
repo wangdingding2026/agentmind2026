@@ -78,4 +78,6 @@ Channel replay adapter readiness is guarded by readiness audit tests, task-event
 
 Feishu `/replay <trace_id>` V1 is implemented through ChannelReplayService.
 
+Observability product closeout is tracked in `docs/observability/observability-product-closeout-status.md`.
+
 Future channel replay work beyond V1 requires a separate package and must keep FeishuAdapter as a protocol adapter, keep ChannelHub as channel glue, and call TaskReplayService for replay data.

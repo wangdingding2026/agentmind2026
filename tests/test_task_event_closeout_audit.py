@@ -30,7 +30,7 @@ REQUIRED_CLOSEOUT_MARKERS = {
     "does not reconstruct live SSE listener queues",
     "no API replay endpoint",
     "no advanced channel replay UX beyond Feishu `/replay <trace_id>` V1",
-    "no observability UI",
+    "no advanced observability UI beyond Panel Observability UI V1",
     "no stream runtime replay",
     "no CPE or AgentShield enforcement",
     "no customer-content inspection",

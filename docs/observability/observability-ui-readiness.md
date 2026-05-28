@@ -68,4 +68,6 @@ Observability UI readiness is guarded by readiness audit tests, task-event close
 
 ## Next Direction
 
+Observability product closeout is tracked in `docs/observability/observability-product-closeout-status.md`.
+
 Future observability UI work beyond V1 requires a separate package.

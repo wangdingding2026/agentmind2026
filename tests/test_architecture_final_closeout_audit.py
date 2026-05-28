@@ -42,7 +42,7 @@ REQUIRED_FINAL_CLOSEOUT_MARKERS = {
     "no TemplateMarket work",
     "no API replay endpoint",
     "no advanced channel replay UX beyond Feishu `/replay <trace_id>` V1",
-    "no observability UI",
+    "no advanced observability UI beyond Panel Observability UI V1",
     "no stream runtime replay",
     "future packages require separate implementation plans",
 }

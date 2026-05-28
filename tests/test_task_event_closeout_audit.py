@@ -29,7 +29,7 @@ REQUIRED_CLOSEOUT_MARKERS = {
     "Replay uses persisted task timeline events",
     "does not reconstruct live SSE listener queues",
     "no API replay endpoint",
-    "no channel replay adapter",
+    "no advanced channel replay UX beyond Feishu `/replay <trace_id>` V1",
     "no observability UI",
     "no stream runtime replay",
     "no CPE or AgentShield enforcement",

@@ -32,6 +32,7 @@ class ChannelHub:
         config_service: Any | None = None,
         feishu_adapter_factory: Callable[..., Any] | None = None,
         route_stream_func: Callable[..., Any] | None = None,
+        channel_replay_service: Any | None = None,
     ):
         self._channels: dict[str, Any] = {}
         self._statuses: dict[str, ChannelStatus] = {}
@@ -39,6 +40,7 @@ class ChannelHub:
         self._config_service = config_service
         self._feishu_adapter_factory = feishu_adapter_factory
         self._route_stream_func = route_stream_func
+        self._channel_replay_service = channel_replay_service
 
     def register_channel(self, channel_id: str, adapter: Any, channel_type: str):
         self._channels[channel_id] = adapter
@@ -96,6 +98,10 @@ class ChannelHub:
         return await self._message_handler(message)
 
     async def _handle_feishu_message(self, app: Any, message: ChannelMessage) -> list[str]:
+        replay_result = await self._handle_channel_replay(message)
+        if replay_result is not None:
+            return [replay_result]
+
         stop_result = self._handle_feishu_discussion_stop(message)
         if stop_result is not None:
             return stop_result
@@ -118,6 +124,15 @@ class ChannelHub:
         ):
             chunks.append(chunk)
         return chunks
+
+    async def _handle_channel_replay(self, message: ChannelMessage) -> str | None:
+        service = self._channel_replay_service
+        if service is None:
+            from agentmind.services.channel_replay_service import ChannelReplayService
+
+            service = ChannelReplayService()
+            self._channel_replay_service = service
+        return await service.handle_text(message.text)
 
     def _handle_feishu_discussion_stop(self, message: ChannelMessage) -> list[str] | None:
         if not self._is_discussion_stop_message(message.text):

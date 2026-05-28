@@ -24,6 +24,8 @@ TaskReplayService owns the service-level replay DTO boundary over TaskTimelineSe
 
 The panel `task_replay` handler calls TaskReplayService and returns the service DTO.
 
+Feishu channel replay V1 is implemented through ChannelReplayService and explicit `/replay <trace_id>` commands.
+
 panel/API/channel remain adapters.
 
 Replay uses persisted task timeline events.
@@ -41,7 +43,7 @@ Persistent replay is represented by stored task timeline events, not raw stream 
 ## Deferred Work
 
 - no API replay endpoint;
-- no channel replay adapter;
+- no advanced channel replay UX beyond Feishu `/replay <trace_id>` V1;
 - no observability UI;
 - no stream runtime replay;
 - no live SSE listener queue persistence or restoration;
@@ -64,6 +66,6 @@ Feishu `route_callback` fallback deletion is complete in `docs/phase4/feishu-rou
 
 Channel replay adapter readiness is tracked in `docs/observability/channel-replay-adapter-readiness.md`.
 
-Future API replay endpoint, channel replay adapter, observability UI, stream runtime replay, governance enforcement, and customer-content inspection require separate packages.
+Future API replay endpoint, advanced channel replay UX beyond Feishu `/replay <trace_id>` V1, observability UI, stream runtime replay, governance enforcement, and customer-content inspection require separate packages.
 
 Each future package must keep services responsible for work and panel/API/channel as adapters.

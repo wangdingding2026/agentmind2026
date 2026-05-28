@@ -41,7 +41,7 @@ REQUIRED_FINAL_CLOSEOUT_MARKERS = {
     "no self-evolution work",
     "no TemplateMarket work",
     "no API replay endpoint",
-    "no channel replay adapter",
+    "no advanced channel replay UX beyond Feishu `/replay <trace_id>` V1",
     "no observability UI",
     "no stream runtime replay",
     "future packages require separate implementation plans",

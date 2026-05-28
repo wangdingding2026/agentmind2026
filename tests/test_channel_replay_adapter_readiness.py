@@ -13,7 +13,7 @@ TASK_EVENT_CLOSEOUT_DOC = (
 
 REQUIRED_CHANNEL_REPLAY_READINESS_MARKERS = {
     "channel replay adapter readiness",
-    "future read-only channel replay adapter",
+    "read-only channel replay adapter",
     "Feishu V1",
     "`/replay <trace_id>`",
     "explicit command only",
@@ -33,7 +33,7 @@ REQUIRED_CHANNEL_REPLAY_READINESS_MARKERS = {
     "no pagination in V1",
     "no Feishu card UI in V1",
     "no API replay endpoint",
-    "implementation requires a separate small package",
+    "Feishu `/replay <trace_id>` V1 is implemented as a separate small package",
 }
 
 
@@ -48,7 +48,7 @@ def test_channel_replay_adapter_readiness_document_exists_and_defers_implementat
     text = _readiness_text()
 
     assert "channel replay adapter readiness" in text
-    assert "implementation requires a separate small package" in text
+    assert "Feishu `/replay <trace_id>` V1 is implemented as a separate small package" in text
 
 
 def test_channel_replay_adapter_readiness_names_required_boundaries():

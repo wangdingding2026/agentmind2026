@@ -396,3 +396,81 @@ async def test_channel_hub_feishu_standard_message_handler_stops_active_discussi
 
     assert result == ["正在结束讨论..."]
     assert route_calls == []
+
+
+class _ChannelReplayService:
+    def __init__(self, response=None):
+        self.response = response
+        self.calls = []
+
+    async def handle_text(self, text):
+        self.calls.append(text)
+        return self.response
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_feishu_replay_command_returns_replay_without_routing():
+    from agentmind.channels.hub import ChannelHub, ChannelMessage
+
+    app = _App()
+    captured = {}
+    route_calls = []
+    replay_service = _ChannelReplayService(response="任务回放 t1：available，1 个事件")
+
+    def adapter_factory(**kwargs):
+        captured.update(kwargs)
+        return _Adapter()
+
+    async def route_stream_func(*args, **kwargs):
+        route_calls.append((args, kwargs))
+        yield "should not route"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+        channel_replay_service=replay_service,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    result = await captured["message_callback"](
+        ChannelMessage(channel_id="feishu", sender_id="u1", text="/replay t1")
+    )
+
+    assert result == ["任务回放 t1：available，1 个事件"]
+    assert replay_service.calls == ["/replay t1"]
+    assert route_calls == []
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_feishu_non_replay_message_still_routes_normally():
+    from agentmind.channels.hub import ChannelHub, ChannelMessage
+
+    app = _App()
+    captured = {}
+    route_calls = []
+    replay_service = _ChannelReplayService(response=None)
+
+    def adapter_factory(**kwargs):
+        captured.update(kwargs)
+        return _Adapter()
+
+    async def route_stream_func(*args, **kwargs):
+        route_calls.append((args, kwargs))
+        yield "normal reply"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+        channel_replay_service=replay_service,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    result = await captured["message_callback"](
+        ChannelMessage(channel_id="feishu", sender_id="u1", text="hello")
+    )
+
+    assert result == ["normal reply"]
+    assert replay_service.calls == ["hello"]
+    assert len(route_calls) == 1

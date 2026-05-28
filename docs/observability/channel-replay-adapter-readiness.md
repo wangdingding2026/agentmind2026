@@ -4,9 +4,9 @@
 
 This document defines channel replay adapter readiness.
 
-A future read-only channel replay adapter is useful for Feishu users who need task replay diagnostics without opening the panel.
+The read-only channel replay adapter is useful for Feishu users who need task replay diagnostics without opening the panel.
 
-This package does not implement the channel replay adapter. Channel replay adapter implementation requires a separate small package.
+Feishu `/replay <trace_id>` V1 is implemented as a separate small package.
 
 ## Feishu V1 UX Boundary
 
@@ -26,7 +26,13 @@ Feishu V1 has no Feishu card UI in V1.
 
 ## Adapter Boundary
 
-A future read-only channel replay adapter must call TaskReplayService.
+The read-only channel replay adapter must call TaskReplayService.
+
+ChannelReplayService owns explicit channel replay command parsing and concise text formatting.
+
+ChannelHub calls ChannelReplayService before normal Feishu routing.
+
+FeishuAdapter remains a protocol adapter and does not know replay semantics.
 
 The adapter DTO must be derived from the TaskReplayService DTO.
 
@@ -50,7 +56,6 @@ TaskReplayService remains the replay DTO source for channel-facing read-only rep
 
 ## Explicit Non-Goals
 
-- no channel replay implementation in this package;
 - no API replay endpoint;
 - no observability UI;
 - no stream runtime replay;
@@ -71,6 +76,6 @@ Channel replay adapter readiness is guarded by readiness audit tests, task-event
 
 ## Next Direction
 
-If channel replay is selected for implementation, start with a separate Feishu `/replay <trace_id>` V1 package.
+Feishu `/replay <trace_id>` V1 is implemented through ChannelReplayService.
 
-That implementation must keep FeishuAdapter as a protocol adapter, keep ChannelHub as channel glue, and call TaskReplayService for replay data.
+Future channel replay work beyond V1 requires a separate package and must keep FeishuAdapter as a protocol adapter, keep ChannelHub as channel glue, and call TaskReplayService for replay data.

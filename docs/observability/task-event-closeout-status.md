@@ -62,6 +62,8 @@ Overall architecture final closeout is tracked in `docs/architecture/final-close
 
 Feishu `route_callback` fallback deletion is complete in `docs/phase4/feishu-route-callback-deletion-readiness.md`.
 
+Channel replay adapter readiness is tracked in `docs/observability/channel-replay-adapter-readiness.md`.
+
 Future API replay endpoint, channel replay adapter, observability UI, stream runtime replay, governance enforcement, and customer-content inspection require separate packages.
 
 Each future package must keep services responsible for work and panel/API/channel as adapters.

@@ -77,7 +77,7 @@ The rule is: future packages require separate implementation plans.
 Possible future product packages include:
 
 - API replay endpoint;
-- channel replay adapter;
+- channel replay adapter, after `docs/observability/channel-replay-adapter-readiness.md`;
 - observability UI;
 - governance enforcement;
 - customer-content inspection, only if explicitly approved later;

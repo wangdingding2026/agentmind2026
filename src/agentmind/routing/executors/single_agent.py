@@ -8,6 +8,7 @@ from agentmind.agents.base import StreamEventType, TaskResult
 from agentmind.api.models import RouteResponse
 from agentmind.routing.context import RoutingDecision
 from agentmind.routing.executors.base import ExecutorBase
+from agentmind.services.task_service import TaskService
 from agentmind.storage.db import record_task_end, record_task_update
 
 logger = logging.getLogger("agentmind")
@@ -81,6 +82,7 @@ class SingleAgentExecutor(ExecutorBase):
         executed_agent_id = decision.agent_id
         any_chunk_sent = False
         buffered_errors: list[dict] = []  # 缓存错误事件，仅在全部失败后发出
+        chunk_index = 0
 
         for agent_id in chain:
             ex = self._find_executor(agent_id)
@@ -98,6 +100,13 @@ class SingleAgentExecutor(ExecutorBase):
                         "content": event.text,
                         "trace_id": trace_id,
                     })}
+                    chunk_index += 1
+                    await TaskService().record_partial_output(
+                        trace_id,
+                        agent_id=agent_id,
+                        content=event.text,
+                        chunk_index=chunk_index,
+                    )
                     yield chunk
                     full_output.append(event.text)
                     any_chunk_sent = True
@@ -171,6 +180,7 @@ class SingleAgentExecutor(ExecutorBase):
         executed_agent_id = decision.agent_id
         any_chunk_sent = False
         buffered_errors: list[str] = []
+        chunk_index = 0
 
         for agent_id in chain:
             ex = self._find_executor(agent_id)
@@ -184,6 +194,13 @@ class SingleAgentExecutor(ExecutorBase):
 
             async for event in ex.execute_stream(envelope):
                 if event.type == StreamEventType.CONTENT:
+                    chunk_index += 1
+                    await TaskService().record_partial_output(
+                        trace_id,
+                        agent_id=agent_id,
+                        content=event.text,
+                        chunk_index=chunk_index,
+                    )
                     if not response_path:
                         yield event.text
                     full_output.append(event.text)

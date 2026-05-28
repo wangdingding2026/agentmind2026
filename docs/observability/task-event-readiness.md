@@ -54,7 +54,11 @@ TaskExplanationService includes TaskTimelineService timeline data at the service
 
 The panel task explanation endpoint explicitly wires TaskTimelineService into TaskExplanationService and returns the service response. It remains an adapter and does not assemble, render, replay, or persist task timeline events.
 
-TaskEventService is not yet wired into partial output capture, persistent task-event replay, observability UI, stream runtime, panel/API/channel adapters, or routing behavior beyond TaskService lifecycle production.
+TaskService now produces `partial_output` task events for streaming executor output through TaskEventService.
+
+`partial_output` payloads contain structured metadata and a bounded preview. They are persisted task timeline events, not raw stream queue objects.
+
+TaskEventService is not wired into persistent task-event replay runtime, observability UI, stream runtime replay, channel adapters, or routing behavior beyond TaskService event production.
 
 ## Explicit Non-Goals
 

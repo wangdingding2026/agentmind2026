@@ -5,6 +5,7 @@ from datetime import datetime
 
 from agentmind.routing.context import RoutingDecision
 from agentmind.routing.executors.base import ExecutorBase
+from agentmind.services.task_service import TaskService
 from agentmind.storage.db import record_task_update
 
 logger = logging.getLogger("agentmind")
@@ -73,6 +74,13 @@ class SelfReplyExecutor(ExecutorBase):
             "trace_id": trace_id,
         })}
 
+        await TaskService().record_partial_output(
+            trace_id,
+            agent_id="agentmind",
+            content=reply,
+            chunk_index=1,
+        )
+
         yield {"event": "partial", "data": json.dumps({
             "content": reply,
             "trace_id": trace_id,
@@ -96,6 +104,13 @@ class SelfReplyExecutor(ExecutorBase):
         reply = self._build_reply(decision)
 
         await record_task_update(trace_id, status="executing", routed_agent="agentmind")
+
+        await TaskService().record_partial_output(
+            trace_id,
+            agent_id="agentmind",
+            content=reply,
+            chunk_index=1,
+        )
 
         yield reply
 

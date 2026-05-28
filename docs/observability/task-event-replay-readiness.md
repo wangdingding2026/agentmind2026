@@ -18,6 +18,8 @@ TaskReplayService normalizes replay limits at the service boundary, returns stab
 
 TaskExplanationService may include timeline DTOs through TaskTimelineService.
 
+Persisted `partial_output` events may appear in TaskTimelineService and TaskReplayService DTOs through the existing task-event timeline query path.
+
 panel/API/channel remain adapters and must not assemble replay timelines.
 
 ## Future Replay Boundary
@@ -45,6 +47,7 @@ future TaskReplayService should own replay orchestration as a service-level boun
 - no panel/API/channel TaskReplayService adapters in this package;
 - no CPE or AgentShield enforcement;
 - no customer-content inspection;
+- no live SSE listener queue persistence or restoration;
 - no replay persistence migration.
 
 ## Verification Gate

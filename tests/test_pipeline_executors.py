@@ -62,6 +62,19 @@ def _mock_registry(executors: dict = None):
     return reg
 
 
+class _TaskServiceRecorder:
+    def __init__(self):
+        self.calls = []
+
+    async def record_partial_output(self, trace_id, agent_id=None, content="", chunk_index=0):
+        self.calls.append({
+            "trace_id": trace_id,
+            "agent_id": agent_id,
+            "content": content,
+            "chunk_index": chunk_index,
+        })
+
+
 # ── PromptEnvelope ──
 
 class TestPromptEnvelope:
@@ -206,6 +219,23 @@ class TestSelfReplyExecutor:
         assert data["content"] == "hi"
 
     @pytest.mark.asyncio
+    async def test_run_stream_records_partial_output_event(self, monkeypatch):
+        recorder = _TaskServiceRecorder()
+        decision = _make_decision(agent_id="agentmind", reply_text="self reply")
+
+        monkeypatch.setattr("agentmind.routing.executors.self_reply.record_task_update", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.self_reply.TaskService", lambda: recorder)
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock())
+
+        executor = SelfReplyExecutor(_mock_registry({}))
+        async for _chunk in executor.run_stream(decision, "t1", "u1"):
+            pass
+
+        assert recorder.calls == [
+            {"trace_id": "t1", "agent_id": "agentmind", "content": "self reply", "chunk_index": 1}
+        ]
+
+    @pytest.mark.asyncio
     async def test_run_text(self, monkeypatch):
         decision = _make_decision(agent_id="agentmind", reply_text="text reply")
 
@@ -218,6 +248,25 @@ class TestSelfReplyExecutor:
         async for chunk in executor.run_text(decision, "t1", "u1"):
             chunks.append(chunk)
         assert chunks == ["text reply"]
+
+    @pytest.mark.asyncio
+    async def test_run_text_records_partial_output_event(self, monkeypatch):
+        recorder = _TaskServiceRecorder()
+        decision = _make_decision(agent_id="agentmind", reply_text="self reply")
+
+        monkeypatch.setattr("agentmind.routing.executors.self_reply.record_task_update", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.self_reply.TaskService", lambda: recorder)
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock())
+
+        executor = SelfReplyExecutor(_mock_registry({}))
+        chunks = []
+        async for chunk in executor.run_text(decision, "t1", "u1"):
+            chunks.append(chunk)
+
+        assert chunks == ["self reply"]
+        assert recorder.calls == [
+            {"trace_id": "t1", "agent_id": "agentmind", "content": "self reply", "chunk_index": 1}
+        ]
 
 
 # ── SingleAgentExecutor run_stream with fallback_chain ──
@@ -249,6 +298,32 @@ class TestSingleAgentStreamFallback:
 
         completed = [c for c in chunks if json.loads(c.get("data", "{}")).get("status") == "completed"]
         assert len(completed) == 1
+
+    @pytest.mark.asyncio
+    async def test_run_stream_records_partial_output_events(self, monkeypatch):
+        async def _fake_stream(msg):
+            yield StreamEvent(StreamEventType.CONTENT, "hello")
+            yield StreamEvent(StreamEventType.CONTENT, " world")
+
+        ex = _mock_executor(succeed=True)
+        ex.execute_stream = _fake_stream
+        reg = _mock_registry({"a1": ex})
+        recorder = _TaskServiceRecorder()
+
+        decision = _make_decision(agent_id="a1", fallback_chain=[])
+        monkeypatch.setattr("agentmind.routing.executors.single_agent.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.single_agent.record_task_update", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.single_agent.TaskService", lambda: recorder)
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock())
+
+        executor = SingleAgentExecutor(reg)
+        async for _chunk in executor.run_stream(decision, "t1", "u1"):
+            pass
+
+        assert recorder.calls == [
+            {"trace_id": "t1", "agent_id": "a1", "content": "hello", "chunk_index": 1},
+            {"trace_id": "t1", "agent_id": "a1", "content": " world", "chunk_index": 2},
+        ]
 
     @pytest.mark.asyncio
     async def test_run_stream_first_fails_no_chunk_tries_next(self, monkeypatch):
@@ -376,6 +451,48 @@ class TestSingleAgentRunText:
         async for chunk in executor.run_text(decision, "t1", "u1"):
             chunks.append(chunk)
         assert chunks == ["chunk1", "chunk2"]
+
+    @pytest.mark.asyncio
+    async def test_run_text_records_partial_output_events(self, monkeypatch):
+        from agentmind.routing.context import RequestIdentity, RoutingContext
+
+        async def _stream(msg):
+            yield StreamEvent(StreamEventType.CONTENT, "chunk1")
+            yield StreamEvent(StreamEventType.CONTENT, "chunk2")
+
+        cap = AgentCapability(
+            id="a1", name="Agent", type="cli", tags=["general"],
+            description="", enabled=True, timeout=5,
+        )
+        from agentmind.agents.cli_executor import CLIExecutor
+        ex = CLIExecutor(cap)
+        ex.is_healthy = True
+        ex.execute_stream = _stream
+
+        reg = _mock_registry({"a1": ex})
+        ctx = RoutingContext(
+            identity=RequestIdentity(trace_id="t1", user_id="u1"),
+            raw_message="hello", candidates=["a1"],
+        )
+        decision = RoutingDecision(
+            agent_id="a1", strategy="test", confidence=0.9,
+            context=ctx,
+        )
+        recorder = _TaskServiceRecorder()
+        monkeypatch.setattr("agentmind.routing.executors.single_agent.record_task_update", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.single_agent.TaskService", lambda: recorder)
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock())
+
+        executor = SingleAgentExecutor(reg)
+        chunks = []
+        async for chunk in executor.run_text(decision, "t1", "u1"):
+            chunks.append(chunk)
+
+        assert chunks == ["chunk1", "chunk2"]
+        assert recorder.calls == [
+            {"trace_id": "t1", "agent_id": "a1", "content": "chunk1", "chunk_index": 1},
+            {"trace_id": "t1", "agent_id": "a1", "content": "chunk2", "chunk_index": 2},
+        ]
 
 
 # ── SessionRegistry ──

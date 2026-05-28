@@ -159,6 +159,27 @@ class TaskService:
     async def get_metrics(self) -> dict:
         return await asyncio.to_thread(storage_db._get_metrics_sync)
 
+    async def record_partial_output(
+        self,
+        trace_id: str,
+        agent_id: str | None = None,
+        content: str = "",
+        chunk_index: int = 0,
+    ) -> None:
+        text = content or ""
+        await self._record_task_event(
+            trace_id=trace_id,
+            event_type="partial_output",
+            seq=50,
+            agent_id=agent_id or "",
+            message="partial output",
+            payload={
+                "chunk_index": chunk_index,
+                "content_length": len(text),
+                "preview": text[:200],
+            },
+        )
+
     async def _record_task_event(
         self,
         *,

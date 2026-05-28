@@ -129,6 +129,53 @@ async def test_task_service_produces_failed_timeline_event(tmp_db):
 
 
 @pytest.mark.asyncio
+async def test_task_service_produces_partial_output_event(tmp_db):
+    event_service = _TaskEventRecorder()
+    service = TaskService(task_event_service=event_service)
+
+    await service.record_partial_output(
+        "tr-partial",
+        agent_id="agent-a",
+        content="hello world",
+        chunk_index=2,
+    )
+
+    assert event_service.events == [
+        {
+            "trace_id": "tr-partial",
+            "event_type": "partial_output",
+            "seq": 50,
+            "agent_id": "agent-a",
+            "message": "partial output",
+            "payload": {
+                "chunk_index": 2,
+                "content_length": 11,
+                "preview": "hello world",
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_task_service_truncates_partial_output_preview(tmp_db):
+    event_service = _TaskEventRecorder()
+    service = TaskService(task_event_service=event_service)
+
+    await service.record_partial_output("tr-partial", content="x" * 300)
+
+    payload = event_service.events[0]["payload"]
+    assert payload["content_length"] == 300
+    assert payload["preview"] == "x" * 200
+
+
+@pytest.mark.asyncio
+async def test_task_service_ignores_partial_output_event_failures(tmp_db):
+    service = TaskService(task_event_service=_FailingTaskEventRecorder())
+
+    await service.record_partial_output("tr-partial", content="hello")
+
+
+@pytest.mark.asyncio
 async def test_task_service_ignores_task_event_production_failures(tmp_db):
     service = TaskService(task_event_service=_FailingTaskEventRecorder())
 

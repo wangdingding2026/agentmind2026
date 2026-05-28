@@ -369,6 +369,73 @@ class TestPanelAPI:
             finally:
                 mp.undo()
 
+    def test_task_replay_endpoint_uses_task_replay_service(self):
+        calls = []
+
+        class FakeTaskReplayService:
+            def __init__(self):
+                calls.append({"constructed": True})
+
+            async def replay(self, trace_id, limit=100):
+                calls.append({"trace_id": trace_id, "limit": limit})
+                return {
+                    "trace_id": trace_id,
+                    "found": True,
+                    "event_count": 1,
+                    "source": "task_events",
+                    "replay_status": "available",
+                    "limit": limit,
+                    "timeline": [
+                        {
+                            "event_id": "e1",
+                            "created_at": "2026-05-28 10:00:00",
+                            "event_type": "task_started",
+                            "seq": 10,
+                            "agent_id": "",
+                            "message": "task started",
+                            "payload": {},
+                        }
+                    ],
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            app, mp = make_panel_app(tmp_dir)
+            mp.setattr(
+                "agentmind.panel.server.TaskReplayService",
+                FakeTaskReplayService,
+                raising=False,
+            )
+            client = TestClient(app)
+            try:
+                resp = client.get("/panel/api/tasks/t1/replay?limit=25")
+                assert resp.status_code == 200
+                assert resp.json() == {
+                    "trace_id": "t1",
+                    "found": True,
+                    "event_count": 1,
+                    "source": "task_events",
+                    "replay_status": "available",
+                    "limit": 25,
+                    "timeline": [
+                        {
+                            "event_id": "e1",
+                            "created_at": "2026-05-28 10:00:00",
+                            "event_type": "task_started",
+                            "seq": 10,
+                            "agent_id": "",
+                            "message": "task started",
+                            "payload": {},
+                        }
+                    ],
+                }
+                assert calls == [
+                    {"constructed": True},
+                    {"trace_id": "t1", "limit": 25},
+                ]
+            finally:
+                mp.undo()
+
     def test_task_read_endpoints_use_task_service(self):
         calls = []
 

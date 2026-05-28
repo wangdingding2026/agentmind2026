@@ -14,6 +14,7 @@ SERVICE_BACKED_HANDLERS = {
     "recent_errors",
     "task_detail",
     "task_explanation",
+    "task_replay",
     "routing_trace",
     "audit_events",
     "routing_explanation",
@@ -67,6 +68,9 @@ FORBIDDEN_SERVICE_BACKED_PATTERNS = {
     "attach_registry": "attach runtime state belongs behind a service boundary",
     "has_local_embedding": "embedding runtime checks belong behind a service boundary",
     "KNOWN_AGENTS": "connector discovery belongs behind a service boundary",
+    "TaskEventService(": "replay adapters must not query task-event storage directly",
+    "TaskTimelineService().timeline": "replay adapters must not assemble timeline DTOs",
+    "stream_snapshot(": "replay adapters must not use stream backlog snapshots",
 }
 
 DIRECT_TRANSITION_PATTERNS = {

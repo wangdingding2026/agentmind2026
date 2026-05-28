@@ -4,8 +4,10 @@
 
 This document defines read-only TaskReplay adapter readiness.
 
-panel, API, and channel replay endpoints are not implemented in this package.
-endpoint implementation requires a separate small package.
+The read-only panel replay endpoint is implemented as an adapter in this package.
+
+API and channel replay endpoints are not implemented in this package.
+Additional endpoint implementation requires a separate small package.
 
 ## Existing Service Contract
 
@@ -13,7 +15,9 @@ TaskReplayService service contract already exists as the service-level replay DT
 
 TaskReplayService normalizes limits, preserves TaskTimelineService event order, and returns stable missing and available replay DTOs.
 
-panel/API/channel currently have no replay endpoint.
+The panel has a read-only replay endpoint backed by TaskReplayService.
+
+API and channel currently have no replay endpoint.
 
 ## Future Read-Only Adapter Boundary
 
@@ -37,9 +41,14 @@ A future adapter must not connect to stream queues.
 
 TaskReplayService remains the only replay DTO source for adapter-facing read-only replay.
 
+## Implemented Panel Adapter
+
+The panel `task_replay` handler calls TaskReplayService and returns the service DTO.
+
+The panel adapter does not assemble timeline data, query TaskEventService, connect to stream queues, implement stream runtime replay, implement observability UI, enable CPE or AgentShield enforcement, or inspect customer content.
+
 ## Explicit Non-Goals
 
-- no panel replay endpoint in this package;
 - no API replay endpoint in this package;
 - no channel replay adapter in this package;
 - does not implement stream runtime replay;

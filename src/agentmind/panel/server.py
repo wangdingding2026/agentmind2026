@@ -16,6 +16,7 @@ from agentmind.services.settings_control_service import SettingsControlService
 from agentmind.services.settings_status_service import SettingsStatusService
 from agentmind.services.session_runtime_service import SessionRuntimeService
 from agentmind.services.task_explanation_service import TaskExplanationService
+from agentmind.services.task_replay_service import TaskReplayService
 from agentmind.services.task_timeline_service import TaskTimelineService
 from agentmind.services.task_service import TaskService
 from agentmind.memory.service import MemoryService
@@ -126,6 +127,10 @@ def create_panel_router() -> APIRouter:
             task_timeline_service=TaskTimelineService(),
         )
         return await service.explain(trace_id)
+
+    @router.get("/tasks/{trace_id}/replay")
+    async def task_replay(trace_id: str, limit: int = 100):
+        return await TaskReplayService().replay(trace_id, limit=limit)
 
     @router.get("/tasks/{trace_id}")
     async def task_detail(trace_id: str):

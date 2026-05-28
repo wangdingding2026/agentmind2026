@@ -17,6 +17,7 @@ These handlers are already migrated and should stay service delegated:
 - `recent_errors`
 - `task_detail`
 - `task_explanation`
+- `task_replay`
 - `routing_trace`
 - `audit_events`
 - `routing_explanation`
@@ -57,6 +58,7 @@ For these handlers, panel must not:
 - write settings, agents, or routes directly;
 - reload `rule_engine` directly;
 - query task storage directly;
+- assemble, replay, or query task replay timelines directly; panel replay adapters must call `TaskReplayService` and return its DTO.
 - control Feishu or other channel runtime lifecycle;
 - access session, attach, stream, connector discovery, or embedding runtime internals.
 

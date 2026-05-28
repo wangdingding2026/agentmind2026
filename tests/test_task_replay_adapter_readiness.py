@@ -14,7 +14,9 @@ REQUIRED_ADAPTER_READINESS_MARKERS = {
     "read-only TaskReplay adapter readiness",
     "TaskReplayService service contract already exists",
     "service-level replay DTO boundary",
-    "panel/API/channel currently have no replay endpoint",
+    "The panel has a read-only replay endpoint backed by TaskReplayService",
+    "API and channel currently have no replay endpoint",
+    "The panel `task_replay` handler calls TaskReplayService",
     "future read-only adapter must call TaskReplayService",
     "must not assemble timeline",
     "must not query TaskEventService",
@@ -39,8 +41,8 @@ def test_task_replay_adapter_readiness_document_exists_and_defers_endpoint():
     text = _adapter_readiness_text()
 
     assert "read-only TaskReplay adapter readiness" in text
-    assert "not implemented in this package" in text
-    assert "endpoint implementation requires a separate small package" in text
+    assert "The read-only panel replay endpoint is implemented" in text
+    assert "Additional endpoint implementation requires a separate small package" in text
 
 
 def test_task_replay_adapter_readiness_document_names_required_boundaries():

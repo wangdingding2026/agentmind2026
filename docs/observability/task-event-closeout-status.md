@@ -63,6 +63,6 @@ The next package should be selected as a separate product decision:
 - API replay endpoint;
 - channel replay adapter;
 - observability UI;
-- Feishu `route_callback` fallback deletion readiness.
+- Feishu `route_callback` fallback deletion readiness in `docs/phase4/feishu-route-callback-deletion-readiness.md`.
 
 Each future package must keep services responsible for work and panel/API/channel as adapters.

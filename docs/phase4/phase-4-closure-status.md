@@ -24,6 +24,7 @@ This closure keeps the architecture rule intact:
 ## Compatibility Boundaries
 
 - `feishu.route_callback` remains a migration fallback only; delete after Feishu inbound handling no longer needs `route_callback` fallback and all supported Feishu inbound paths use `ChannelMessage`.
+- Feishu `route_callback` deletion readiness is tracked in `docs/phase4/feishu-route-callback-deletion-readiness.md`.
 - live stream listener queues remain volatile and are not restored. `stream_snapshot` exposes only in-process backlog snapshots.
 
 ## Explicit Non-Goals
@@ -38,4 +39,10 @@ Phase 4 closure is guarded by ChannelHub, Feishu adapter, startup, panel boundar
 
 ## Next Direction
 
-Start Phase 5 readiness in `docs/phase5/phase-5-readiness.md` only after this closure audit remains green.
+Phase 5 and observability/task-event closeout are complete.
+
+Start Phase 5 readiness in `docs/phase5/phase-5-readiness.md` was the completed historical next gate.
+
+Previous gate: `docs/phase5/phase-5-readiness.md`.
+
+Feishu `route_callback` fallback deletion readiness is tracked in `docs/phase4/feishu-route-callback-deletion-readiness.md`.

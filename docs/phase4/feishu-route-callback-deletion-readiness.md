@@ -4,42 +4,24 @@
 
 This document defines Feishu route_callback deletion readiness.
 
-`feishu.route_callback` remains a bounded migration fallback and is not deleted in this package.
+`feishu.route_callback` fallback has been removed and is deleted in this package.
 
-## Current Boundaries
+## Implemented Deletion
 
 ChannelHub owns Feishu channel lifecycle, status, and standard message routing glue.
 
+ChannelHub no longer constructs `route_callback`.
+
+FeishuAdapter no longer executes `route_callback`.
+
 The standard inbound path uses `ChannelMessage`.
 
-FeishuAdapter prefers `message_callback` over `route_callback`.
+The standard `message_callback` path remains supported.
 
-The legacy fallback path still exists through `route_callback`.
-
-The compatibility boundary remains explicit in ChannelHub with status `migration_fallback`.
-
-## Deletion Blockers
-
-Deletion is blocked until all supported Feishu inbound paths use `ChannelMessage`.
-
-Deletion is blocked while compatibility fallback tests still document supported legacy behavior.
-
-Deletion is blocked until startup and panel Feishu lifecycle paths remain green without relying on route_callback fallback behavior.
-
-## Future Deletion Package Requirements
-
-A future deletion package must:
-
-- remove `route_callback` construction from ChannelHub;
-- remove fallback execution from FeishuAdapter;
-- remove legacy fallback tests deliberately;
-- keep the standard `message_callback` / `ChannelMessage` path green;
-- keep Feishu discussion stop handling behind ChannelHub;
-- keep panel and startup code as adapters.
+Feishu discussion stop handling remains behind ChannelHub.
 
 ## Explicit Non-Goals
 
-- no deletion in this package;
 - no new Feishu business behavior;
 - no route_stream fallback expansion;
 - no channel replay adapter;
@@ -51,8 +33,8 @@ A future deletion package must:
 
 ## Verification Gate
 
-Feishu route_callback deletion readiness is guarded by readiness audit tests, ChannelHub tests, Feishu adapter tests, Phase 4 closure tests, panel architecture tests, router/panel regression, and full pytest.
+Feishu route_callback deletion is guarded by readiness audit tests, ChannelHub tests, Feishu adapter tests, Phase 4 closure tests, panel architecture tests, router/panel regression, and full pytest.
 
 ## Next Direction
 
-If Feishu fallback cleanup remains the priority, the next package should be a deletion implementation plan that removes the fallback only after this readiness gate stays green.
+Feishu fallback cleanup is complete. Future Feishu work should use the standard `message_callback` / `ChannelMessage` path and keep panel/startup as adapters.

@@ -11,16 +11,13 @@ TASK_EVENT_CLOSEOUT_DOC = (
 
 REQUIRED_DELETION_READINESS_MARKERS = {
     "Feishu route_callback deletion readiness",
-    "`feishu.route_callback` remains a bounded migration fallback",
-    "not deleted in this package",
+    "`feishu.route_callback` fallback has been removed",
+    "deleted in this package",
     "ChannelHub owns Feishu channel lifecycle",
-    "FeishuAdapter prefers `message_callback` over `route_callback`",
+    "ChannelHub no longer constructs `route_callback`",
+    "FeishuAdapter no longer executes `route_callback`",
     "standard inbound path uses `ChannelMessage`",
-    "legacy fallback path still exists",
-    "all supported Feishu inbound paths use `ChannelMessage`",
-    "remove `route_callback` construction from ChannelHub",
-    "remove fallback execution from FeishuAdapter",
-    "remove legacy fallback tests deliberately",
+    "standard `message_callback` path remains supported",
     "no new Feishu business behavior",
     "no route_stream fallback expansion",
     "no channel replay adapter",
@@ -41,8 +38,8 @@ def test_feishu_route_callback_deletion_readiness_document_exists_and_defers_del
     text = _readiness_text()
 
     assert "Feishu route_callback deletion readiness" in text
-    assert "`feishu.route_callback` remains a bounded migration fallback" in text
-    assert "not deleted in this package" in text
+    assert "`feishu.route_callback` fallback has been removed" in text
+    assert "deleted in this package" in text
 
 
 def test_feishu_route_callback_deletion_readiness_names_required_boundaries():

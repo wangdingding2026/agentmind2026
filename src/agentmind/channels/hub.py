@@ -224,37 +224,13 @@ class ChannelHub:
 
     def _create_feishu_adapter(self, app: Any, app_id: str, app_secret: str):
         adapter_factory = self._feishu_adapter_factory or self._default_feishu_adapter_factory
-        route_stream_func = self._route_stream_func or self._default_route_stream_func
 
         async def feishu_message_callback(message: ChannelMessage):
             return await self._handle_feishu_message(app, message)
 
-        async def feishu_callback(msg: str, sender_id: str):
-            async def _send(text: str):
-                adapter = getattr(app.state, "feishu_adapter", None)
-                if adapter:
-                    await adapter.send_message(sender_id, text)
-
-            async for chunk in route_stream_func(
-                msg,
-                sender_id,
-                app.state.agent_registry,
-                app.state.rule_engine,
-                app.state.settings,
-                send_func=_send,
-            ):
-                yield chunk
-
-        feishu_callback._agentmind_compatibility_boundary = {
-            "name": "feishu.route_callback",
-            "status": "migration_fallback",
-            "delete_after": "Feishu inbound handling no longer needs route_callback fallback",
-        }
-
         return adapter_factory(
             app_id=app_id,
             app_secret=app_secret,
-            route_callback=feishu_callback,
             message_callback=feishu_message_callback,
         )
 

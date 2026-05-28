@@ -81,7 +81,11 @@ class TestFeishuStandardMessage:
             received.append(message)
             return ["standard ", "reply"]
 
-        adapter = FeishuAdapter("fake_id", "fake_secret", None, message_callback=message_callback)
+        adapter = FeishuAdapter(
+            "fake_id",
+            "fake_secret",
+            message_callback=message_callback,
+        )
         await adapter._message_queue.put({"sender_id": "u1", "text": "hello", "msg_id": "m1"})
         sent = []
         reactions = []
@@ -112,16 +116,10 @@ class TestFeishuStandardMessage:
         assert sent == [("u1", "standard reply", "m1")]
 
     @pytest.mark.asyncio
-    async def test_feishu_adapter_keeps_legacy_route_callback_fallback(self, monkeypatch):
+    async def test_feishu_adapter_without_message_callback_does_not_route_legacy_fallback(self, monkeypatch):
         from agentmind.channels.feishu import FeishuAdapter
 
-        calls = []
-
-        async def route_callback(text, sender_id):
-            calls.append((text, sender_id))
-            yield "legacy reply"
-
-        adapter = FeishuAdapter("fake_id", "fake_secret", route_callback)
+        adapter = FeishuAdapter("fake_id", "fake_secret")
         await adapter._message_queue.put({"sender_id": "u1", "text": "hello", "msg_id": "m1"})
         sent = []
 
@@ -136,28 +134,23 @@ class TestFeishuStandardMessage:
         adapter._main_loop_task = asyncio.create_task(adapter._process_messages())
         await adapter._main_loop_task
 
-        assert calls == [("hello", "u1")]
-        assert sent == [("u1", "legacy reply", "m1")]
+        assert sent == [
+            ("u1", "Agent 执行完成但未返回结果，请检查 Agent 配置或重试", "m1")
+        ]
 
     @pytest.mark.asyncio
-    async def test_feishu_adapter_prefers_standard_callback_over_legacy_fallback(self, monkeypatch):
+    async def test_feishu_adapter_uses_standard_callback(self, monkeypatch):
         from agentmind.channels.feishu import FeishuAdapter
 
         standard_calls = []
-        legacy_calls = []
 
         async def message_callback(message):
             standard_calls.append((message.sender_id, message.text))
             return ["standard reply"]
 
-        async def route_callback(text, sender_id):
-            legacy_calls.append((text, sender_id))
-            yield "legacy reply"
-
         adapter = FeishuAdapter(
             "fake_id",
             "fake_secret",
-            route_callback=route_callback,
             message_callback=message_callback,
         )
         await adapter._message_queue.put({"sender_id": "u1", "text": "hello", "msg_id": "m1"})
@@ -175,7 +168,6 @@ class TestFeishuStandardMessage:
         await adapter._main_loop_task
 
         assert standard_calls == [("u1", "hello")]
-        assert legacy_calls == []
         assert sent == [("u1", "standard reply", "m1")]
 
     @pytest.mark.asyncio
@@ -190,7 +182,11 @@ class TestFeishuStandardMessage:
             received.append(message)
             return ["callback handled stop"]
 
-        adapter = FeishuAdapter("fake_id", "fake_secret", None, message_callback=message_callback)
+        adapter = FeishuAdapter(
+            "fake_id",
+            "fake_secret",
+            message_callback=message_callback,
+        )
         await adapter._message_queue.put({"sender_id": "u1", "text": "stop", "msg_id": "m1"})
         sent = []
 

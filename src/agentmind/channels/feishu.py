@@ -26,10 +26,9 @@ logger = logging.getLogger("agentmind.channel.feishu")
 class FeishuAdapter(ChannelAdapter):
     """飞书 WebSocket 长连接适配器。SDK 阻塞调用隔离在独立线程，通过 Queue 通信"""
 
-    def __init__(self, app_id: str, app_secret: str, route_callback=None, message_callback=None):
+    def __init__(self, app_id: str, app_secret: str, message_callback=None):
         self.app_id = app_id
         self.app_secret = app_secret
-        self.route_callback = route_callback  # async def callback(msg, sender_id) -> AsyncGenerator[str]
         self.message_callback = message_callback
 
         self._message_queue: asyncio.Queue = asyncio.Queue()
@@ -251,9 +250,6 @@ class FeishuAdapter(ChannelAdapter):
                             full_output = [result]
                         else:
                             full_output = [str(chunk) for chunk in result]
-                    elif self.route_callback is not None:
-                        async for chunk in self.route_callback(msg["text"], msg["sender_id"]):
-                            full_output.append(chunk)
                     # 移除表情
                     await self._remove_reaction(root_id, reaction_id)
                     final = "".join(full_output)

@@ -263,38 +263,7 @@ async def test_channel_hub_auto_starts_feishu_from_settings():
 
 
 @pytest.mark.asyncio
-async def test_channel_hub_feishu_callback_provides_send_func_to_routing():
-    from agentmind.channels.hub import ChannelHub
-
-    app = _App()
-    adapter = _Adapter()
-    captured = {}
-
-    def adapter_factory(**kwargs):
-        captured["callback"] = kwargs["route_callback"]
-        return adapter
-
-    async def route_stream_func(*args, **kwargs):
-        await kwargs["send_func"]("side effect reply")
-        yield "ok"
-
-    hub = ChannelHub(
-        config_service=_ConfigService(),
-        feishu_adapter_factory=adapter_factory,
-        route_stream_func=route_stream_func,
-    )
-    await hub.connect_feishu(app, "app", "secret")
-
-    chunks = []
-    async for chunk in captured["callback"]("hello", "u1"):
-        chunks.append(chunk)
-
-    assert chunks == ["ok"]
-    assert adapter.sent == [("u1", "side effect reply")]
-
-
-@pytest.mark.asyncio
-async def test_channel_hub_marks_feishu_route_callback_as_migration_fallback():
+async def test_channel_hub_does_not_pass_feishu_route_callback():
     from agentmind.channels.hub import ChannelHub
 
     app = _App()
@@ -314,12 +283,36 @@ async def test_channel_hub_marks_feishu_route_callback_as_migration_fallback():
     )
     await hub.connect_feishu(app, "app", "secret")
 
-    legacy_callback = captured["route_callback"]
-    assert getattr(legacy_callback, "_agentmind_compatibility_boundary", None) == {
-        "name": "feishu.route_callback",
-        "status": "migration_fallback",
-        "delete_after": "Feishu inbound handling no longer needs route_callback fallback",
-    }
+    assert "route_callback" not in captured
+    assert captured["message_callback"] is not None
+
+
+@pytest.mark.asyncio
+async def test_channel_hub_feishu_adapter_kwargs_have_no_migration_fallback():
+    from agentmind.channels.hub import ChannelHub
+
+    app = _App()
+    captured = {}
+
+    def adapter_factory(**kwargs):
+        captured.update(kwargs)
+        return _Adapter()
+
+    async def route_stream_func(*args, **kwargs):
+        yield "ok"
+
+    hub = ChannelHub(
+        config_service=_ConfigService(),
+        feishu_adapter_factory=adapter_factory,
+        route_stream_func=route_stream_func,
+    )
+    await hub.connect_feishu(app, "app", "secret")
+
+    assert "route_callback" not in captured
+    assert not any(
+        getattr(value, "_agentmind_compatibility_boundary", None)
+        for value in captured.values()
+    )
 
 
 @pytest.mark.asyncio

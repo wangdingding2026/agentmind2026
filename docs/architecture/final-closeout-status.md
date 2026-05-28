@@ -76,11 +76,13 @@ The rule is: future packages require separate implementation plans.
 
 Channel replay adapter readiness is tracked in `docs/observability/channel-replay-adapter-readiness.md`.
 
+Observability UI readiness is tracked in `docs/observability/observability-ui-readiness.md`.
+
 Possible future product packages include:
 
 - API replay endpoint;
 - advanced channel replay UX beyond Feishu `/replay <trace_id>` V1;
-- observability UI;
+- observability UI, after `docs/observability/observability-ui-readiness.md`;
 - governance enforcement;
 - customer-content inspection, only if explicitly approved later;
 - self-evolution or TemplateMarket, only if explicitly brought back into scope.

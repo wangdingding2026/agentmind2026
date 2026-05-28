@@ -66,6 +66,8 @@ Feishu `route_callback` fallback deletion is complete in `docs/phase4/feishu-rou
 
 Channel replay adapter readiness is tracked in `docs/observability/channel-replay-adapter-readiness.md`.
 
+Observability UI readiness is tracked in `docs/observability/observability-ui-readiness.md`.
+
 Future API replay endpoint, advanced channel replay UX beyond Feishu `/replay <trace_id>` V1, observability UI, stream runtime replay, governance enforcement, and customer-content inspection require separate packages.
 
 Each future package must keep services responsible for work and panel/API/channel as adapters.

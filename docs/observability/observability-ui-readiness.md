@@ -4,17 +4,21 @@
 
 This document defines observability UI readiness.
 
-A future panel observability UI can expose a task replay timeline view for task debugging, failure inspection, and partial output review.
+The panel observability UI exposes a task replay timeline view for task debugging, failure inspection, and partial output review.
 
-The UI implementation requires a separate small package.
+Panel Observability UI V1 is implemented as a separate small package.
 
 ## UI Boundary
 
-The future panel observability UI must consume the existing panel replay endpoint `/panel/api/tasks/{trace_id}/replay`.
+The panel observability UI must consume the existing panel replay endpoint `/panel/api/tasks/{trace_id}/replay`.
 
 The panel replay endpoint is backed by TaskReplayService.
 
 The UI must render the service DTO returned by the panel replay endpoint.
+
+Panel Observability UI V1 renders the existing replay DTO from `/panel/api/tasks/{trace_id}/replay`.
+
+Panel Observability UI V1 remains read-only and does not add backend APIs.
 
 The UI must be read-only.
 
@@ -48,7 +52,6 @@ The UI must not inspect customer content.
 
 ## Explicit Non-Goals
 
-- no UI implementation in this package;
 - no API replay endpoint;
 - no channel replay UX expansion;
 - no stream runtime replay;
@@ -65,4 +68,4 @@ Observability UI readiness is guarded by readiness audit tests, task-event close
 
 ## Next Direction
 
-If selected for implementation, start a separate panel observability UI V1 package that renders the existing replay DTO from `/panel/api/tasks/{trace_id}/replay`.
+Future observability UI work beyond V1 requires a separate package.

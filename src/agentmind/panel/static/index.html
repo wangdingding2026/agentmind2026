@@ -220,9 +220,16 @@
       <div class="section-title" style="font-size:1.05rem;margin-top:1rem">最近任务</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>时间</th><th>指令</th><th>Agent</th><th>状态</th><th>耗时</th></tr></thead>
+          <thead><tr><th>时间</th><th>指令</th><th>Agent</th><th>状态</th><th>耗时</th><th>回放</th></tr></thead>
           <tbody id="tasks-tbody"></tbody>
         </table>
+      </div>
+      <div id="task-replay-panel" class="config-card" hidden style="margin-top:0.5rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem">
+          <h4 id="task-replay-title" style="margin:0;font-size:0.95rem">任务回放</h4>
+          <button class="btn-outline" onclick="closeTaskReplay()" style="font-size:0.75rem;padding:0.1rem 0.5rem">关闭</button>
+        </div>
+        <div id="task-replay-content" style="margin-top:0.75rem;font-size:0.85rem;color:#334155"></div>
       </div>
       <div class="section-title" style="font-size:1.05rem;margin-top:1rem">最近错误</div>
       <div class="table-wrap" id="errors-list"></div>
@@ -410,6 +417,52 @@
       return (ms / 1000).toFixed(1) + 's';
     }
 
+    async function loadTaskReplay(traceId) {
+      if (!traceId) { showToast('缺少 trace_id', 'error'); return; }
+      const panel = document.getElementById('task-replay-panel');
+      const title = document.getElementById('task-replay-title');
+      const content = document.getElementById('task-replay-content');
+      panel.hidden = false;
+      title.textContent = '任务回放 ' + traceId;
+      content.innerHTML = '<div style="color:#94a3b8">加载中...</div>';
+      const data = await fetchAPI('/tasks/' + encodeURIComponent(traceId) + '/replay?limit=50');
+      renderTaskReplay(data);
+    }
+
+    function closeTaskReplay() {
+      const panel = document.getElementById('task-replay-panel');
+      if (panel) panel.hidden = true;
+    }
+
+    function renderTaskReplay(data) {
+      const content = document.getElementById('task-replay-content');
+      if (!content) return;
+      if (!data) {
+        content.innerHTML = '<div style="color:#f44336">回放加载失败</div>';
+        return;
+      }
+      if (!data.found) {
+        content.innerHTML = '<div style="color:#94a3b8">未找到持久化任务事件</div>';
+        return;
+      }
+      const events = data.timeline || [];
+      const header = '<div style="margin-bottom:0.5rem;color:#475569">状态：' + escapeHtml(data.replay_status || '-') + ' · 事件：' + escapeHtml(data.event_count) + ' · 来源：' + escapeHtml(data.source || '-') + '</div>';
+      const rows = events.length ? events.map(formatReplayEvent).join('') : '<div style="color:#94a3b8">暂无事件</div>';
+      content.innerHTML = header + '<div style="display:flex;flex-direction:column;gap:0.35rem">' + rows + '</div>';
+    }
+
+    function formatReplayEvent(event, index) {
+      const eventType = event.event_type || '-';
+      const isPartial = eventType === 'partial_output';
+      const preview = event.payload && event.payload.preview ? event.payload.preview : '';
+      const message = event.message || preview || '';
+      const border = isPartial ? '#2196f3' : '#e2e8f0';
+      return '<div style="border-left:3px solid ' + border + ';padding:0.4rem 0.6rem;background:#f8fafc;border-radius:4px">' +
+        '<div style="font-size:0.78rem;color:#64748b">' + (index + 1) + '. ' + escapeHtml(event.created_at || '-') + ' · ' + escapeHtml(eventType) + (event.agent_id ? ' · ' + escapeHtml(event.agent_id) : '') + '</div>' +
+        (message ? '<div style="margin-top:0.2rem;white-space:pre-wrap">' + escapeHtml(message).slice(0, 240) + '</div>' : '') +
+      '</div>';
+    }
+
     // === AgentMind 总览 ===
     async function loadAgents() {
       const [agentsData, connData, svcData, fsData, tasksData, errorsData, memStats] = await Promise.all([
@@ -480,8 +533,8 @@
       // 最近任务
       if (tasksData && tasksData.tasks) {
         document.getElementById('tasks-tbody').innerHTML = tasksData.tasks.map(function(t) {
-          return '<tr><td>' + escapeHtml(formatTime(t.created_at)) + '</td><td>' + escapeHtml((t.user_message || '').slice(0, 60)) + '</td><td>' + escapeHtml(t.routed_agent || '-') + '</td><td>' + statusBadge(t.status) + '</td><td>' + formatMs(t.execution_time_ms) + '</td></tr>';
-        }).join('') || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">暂无任务</td></tr>';
+          return '<tr><td>' + escapeHtml(formatTime(t.created_at)) + '</td><td>' + escapeHtml((t.user_message || '').slice(0, 60)) + '</td><td>' + escapeHtml(t.routed_agent || '-') + '</td><td>' + statusBadge(t.status) + '</td><td>' + formatMs(t.execution_time_ms) + '</td><td><button class="btn-outline btn-task-replay" data-trace-id="' + escapeHtml(t.trace_id || '') + '" style="font-size:0.75rem;padding:0.1rem 0.5rem">回放</button></td></tr>';
+        }).join('') || '<tr><td colspan="6" style="text-align:center;color:#94a3b8">暂无任务</td></tr>';
       }
 
       // 最近错误
@@ -939,6 +992,11 @@
       if (rst) { restartAgent(rst.dataset.agentId); return; }
       const tgl = e.target.closest('.btn-toggle');
       if (tgl) toggleAgent(tgl.dataset.agentId);
+    });
+
+    document.getElementById('tasks-tbody').addEventListener('click', function(e) {
+      const btn = e.target.closest('.btn-task-replay');
+      if (btn) loadTaskReplay(btn.dataset.traceId);
     });
 
     // === 路由矩阵 ===

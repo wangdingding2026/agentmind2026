@@ -26,6 +26,8 @@ The panel `task_replay` handler calls TaskReplayService and returns the service 
 
 Feishu channel replay V1 is implemented through ChannelReplayService and explicit `/replay <trace_id>` commands.
 
+Panel Observability UI V1 is implemented through the existing `/panel/api/tasks/{trace_id}/replay` adapter.
+
 panel/API/channel remain adapters.
 
 Replay uses persisted task timeline events.

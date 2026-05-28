@@ -82,7 +82,7 @@ Possible future product packages include:
 
 - API replay endpoint;
 - advanced channel replay UX beyond Feishu `/replay <trace_id>` V1;
-- observability UI, after `docs/observability/observability-ui-readiness.md`;
+- advanced observability UI beyond Panel Observability UI V1;
 - governance enforcement;
 - customer-content inspection, only if explicitly approved later;
 - self-evolution or TemplateMarket, only if explicitly brought back into scope.

@@ -13,7 +13,7 @@ TASK_EVENT_CLOSEOUT_DOC = (
 
 REQUIRED_OBSERVABILITY_UI_READINESS_MARKERS = {
     "observability UI readiness",
-    "future panel observability UI",
+    "panel observability UI",
     "task replay timeline view",
     "must consume the existing panel replay endpoint",
     "`/panel/api/tasks/{trace_id}/replay`",
@@ -33,7 +33,7 @@ REQUIRED_OBSERVABILITY_UI_READINESS_MARKERS = {
     "found and missing states",
     "bounded event display",
     "partial_output events may be displayed",
-    "implementation requires a separate small package",
+    "Panel Observability UI V1 is implemented as a separate small package",
 }
 
 
@@ -48,7 +48,7 @@ def test_observability_ui_readiness_document_exists_and_defers_ui():
     text = _readiness_text()
 
     assert "observability UI readiness" in text
-    assert "implementation requires a separate small package" in text
+    assert "Panel Observability UI V1 is implemented as a separate small package" in text
 
 
 def test_observability_ui_readiness_names_required_boundaries():

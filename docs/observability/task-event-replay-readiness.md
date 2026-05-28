@@ -56,6 +56,8 @@ Replay readiness is guarded by task-event replay readiness tests, task-event obs
 
 ## Next Direction
 
-After this service contract remains green, the next package is `docs/observability/task-replay-adapter-readiness.md`.
+After the service and panel adapter contracts remain green, this route is closed in `docs/observability/task-event-closeout-status.md`.
 
-That package should decide read-only adapter entry conditions before any panel/API endpoint is implemented. Stream runtime replay, observability UI, channel replay, CPE/AgentShield enforcement, and customer-content inspection remain out of scope until separate packages are approved.
+Future API replay, channel replay, observability UI, stream runtime replay, governance enforcement, and customer-content inspection require separate packages.
+
+Previous gate: `docs/observability/task-replay-adapter-readiness.md`.

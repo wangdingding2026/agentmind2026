@@ -74,4 +74,6 @@ Task-event readiness is guarded by architecture audit tests plus Phase 4 and Pha
 
 ## Next Direction
 
-After the task event service, timeline query, explanation, and panel adapter boundaries remain green, the next package is `docs/observability/task-event-replay-readiness.md`.
+The task-event service, producer, timeline, replay service, and panel replay adapter boundaries are closed in `docs/observability/task-event-closeout-status.md`.
+
+Previous gate: `docs/observability/task-event-replay-readiness.md`.

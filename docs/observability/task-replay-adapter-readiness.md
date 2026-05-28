@@ -66,6 +66,6 @@ TaskReplay adapter readiness is guarded by adapter readiness tests, task-event r
 
 ## Next Direction
 
-If a read-only replay endpoint is needed, create a separate small implementation package that wires a panel or API adapter to TaskReplayService and keeps the adapter as pass-through only.
+This adapter route is closed in `docs/observability/task-event-closeout-status.md`.
 
-Stream runtime replay, observability UI, channel replay, governance enforcement, and customer-content inspection remain separate future decisions.
+Future API replay endpoint, channel replay adapter, observability UI, stream runtime replay, governance enforcement, and customer-content inspection remain separate future decisions.

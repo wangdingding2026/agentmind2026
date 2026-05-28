@@ -58,11 +58,10 @@ Task-event closeout is guarded by closeout audit tests, task-event readiness tes
 
 ## Next Direction
 
-The next package should be selected as a separate product decision:
+Overall architecture final closeout is tracked in `docs/architecture/final-closeout-status.md`.
 
-- API replay endpoint;
-- channel replay adapter;
-- observability UI;
-- Feishu `route_callback` fallback deletion readiness in `docs/phase4/feishu-route-callback-deletion-readiness.md`.
+Feishu `route_callback` fallback deletion is complete in `docs/phase4/feishu-route-callback-deletion-readiness.md`.
+
+Future API replay endpoint, channel replay adapter, observability UI, stream runtime replay, governance enforcement, and customer-content inspection require separate packages.
 
 Each future package must keep services responsible for work and panel/API/channel as adapters.

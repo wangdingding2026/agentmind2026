@@ -54,6 +54,8 @@ Phase 5 closure is guarded by governance skeleton, CPE dry-run, AuditService, Ph
 
 ## Next Direction
 
-Start task-event observability readiness in `docs/observability/task-event-readiness.md` only after this closure audit remains green.
+Overall architecture final closeout is tracked in `docs/architecture/final-closeout-status.md`.
 
-The next package should define task-event boundaries before any persistent task-event replay, observability UI, or stream runtime changes.
+The completed task-event observability readiness gate remains recorded in `docs/observability/task-event-readiness.md`.
+
+Future governance enforcement, customer-content inspection, self-evolution, and TemplateMarket work require separate product decisions and implementation plans.

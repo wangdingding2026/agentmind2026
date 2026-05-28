@@ -37,4 +37,6 @@ Feishu route_callback deletion is guarded by readiness audit tests, ChannelHub t
 
 ## Next Direction
 
-Feishu fallback cleanup is complete. Future Feishu work should use the standard `message_callback` / `ChannelMessage` path and keep panel/startup as adapters.
+Overall architecture final closeout is tracked in `docs/architecture/final-closeout-status.md`.
+
+Future Feishu work should use the standard `message_callback` / `ChannelMessage` path and keep panel/startup as adapters.

@@ -290,6 +290,15 @@ class MemoryService:
         mem_cfg = settings.get("memory", {})
         steps = []
 
+        core_text = ""
+        if user_id:
+            try:
+                core_text = await self._repository.read_core_memory(user_id)
+                if core_text:
+                    steps.append("core_memory")
+            except Exception:
+                core_text = ""
+
         working = []
         if user_id:
             working = self.get_working_memory(
@@ -314,11 +323,19 @@ class MemoryService:
             limit=max_candidates,
         )
         recent_rows = [self._card_row_to_search_dict(row) for row in recent_rows]
+        relation_rows = await self._repository.related_cards_for_query(
+            query=message,
+            user_id=user_id,
+            limit=max_candidates,
+        )
+        relation_rows = [self._card_row_to_search_dict(row) for row in relation_rows]
         if keyword_rows:
             steps.append("keyword_cards")
         if recent_rows:
             steps.append("recent_cards")
-        rows = self._merge_retrieval_rows(keyword_rows, recent_rows)
+        if relation_rows:
+            steps.append("relation_cards")
+        rows = self._merge_retrieval_rows(keyword_rows, relation_rows, recent_rows)
         rows = self._dedupe_memory_rows(rows)
         if rows:
             steps.append("memory_cards")
@@ -343,7 +360,7 @@ class MemoryService:
             from agentmind.memory.pipeline.assembler import ContextAssembler
 
             assembled = ContextAssembler().assemble(
-                "",
+                core_text,
                 working,
                 recall_results,
                 max_bytes=mem_cfg.get("context_max_bytes", 8192),
@@ -377,15 +394,16 @@ class MemoryService:
         return deduped
 
     @staticmethod
-    def _merge_retrieval_rows(keyword_rows: list[dict], recent_rows: list[dict]) -> list[dict]:
+    def _merge_retrieval_rows(*row_groups: list[dict]) -> list[dict]:
         merged = []
         seen = set()
-        for row in list(keyword_rows) + list(recent_rows):
-            memory_id = row.get("memory_id") or row.get("raw_memory_id")
-            if memory_id in seen:
-                continue
-            seen.add(memory_id)
-            merged.append(row)
+        for rows in row_groups:
+            for row in rows:
+                memory_id = row.get("memory_id") or row.get("raw_memory_id")
+                if memory_id in seen:
+                    continue
+                seen.add(memory_id)
+                merged.append(row)
         return merged
 
     @staticmethod

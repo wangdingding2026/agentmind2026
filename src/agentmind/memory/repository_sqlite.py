@@ -334,6 +334,11 @@ class SqliteMemoryRepository:
         conn.execute("DELETE FROM raw_memory WHERE memory_id=?", (raw_memory_id,))
         conn.execute("DELETE FROM result_sets WHERE memory_ids LIKE ?", (f"%{memory_id}%",))
         conn.execute("DELETE FROM memory_relations WHERE head_memory_id=? OR tail_memory_id=?", (memory_id, memory_id))
+        conn.execute(
+            """UPDATE core_memory SET status='invalidated', updated_at=?
+               WHERE slot_value LIKE ?""",
+            (_now_sqlite(), f"%{memory_id}%"),
+        )
         try:
             conn.execute("DELETE FROM vec_memory WHERE memory_id=?", (memory_id,))
         except Exception:
@@ -404,6 +409,22 @@ class SqliteMemoryRepository:
         finally:
             conn.close()
 
+    async def confirm_core_memory(self, user_id: str, slot_key: str) -> bool:
+        return await asyncio.to_thread(self._confirm_core_memory_sync, user_id, slot_key)
+
+    def _confirm_core_memory_sync(self, user_id: str, slot_key: str) -> bool:
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                """UPDATE core_memory SET status='confirmed', updated_at=?
+                   WHERE user_id=? AND slot_key=? AND status='pending'""",
+                (_now_sqlite(), user_id or "default", slot_key),
+            )
+            conn.commit()
+            return conn.total_changes > 0
+        finally:
+            conn.close()
+
     async def read_core_memory(self, user_id: str) -> str:
         return await asyncio.to_thread(self._read_core_memory_sync, user_id)
 
@@ -426,6 +447,41 @@ class SqliteMemoryRepository:
                     content = row["slot_value"] or ""
                 parts.append(f"[{row['slot_key']}] {content[:200]}")
             return "\n".join(parts)
+        finally:
+            conn.close()
+
+    async def related_cards_for_query(
+        self, query: str, user_id: str, limit: int = 5
+    ) -> list[dict]:
+        return await asyncio.to_thread(self._related_cards_for_query_sync, query, user_id, limit)
+
+    def _related_cards_for_query_sync(self, query: str, user_id: str, limit: int = 5) -> list[dict]:
+        if not query or not user_id:
+            return []
+        terms = _query_terms(query)
+        relation_clauses = []
+        params: list = [user_id]
+        for term in terms:
+            relation_clauses.append("(tail_entity LIKE ? OR relation LIKE ?)")
+            like = f"%{term}%"
+            params.extend([like, like])
+        where = " OR ".join(relation_clauses)
+        params.append(limit)
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                f"""SELECT DISTINCT c.* FROM memory_relations r
+                    JOIN memory_cards c ON c.memory_id = r.head_memory_id
+                    WHERE r.user_id=? AND ({where})
+                    ORDER BY c.created_at DESC, c.memory_id ASC
+                    LIMIT ?""",
+                params,
+            ).fetchall()
+            cards = [self._row_to_card(row) for row in rows]
+            for card in cards:
+                card["_score"] = self._score_card(card, query) + 0.4
+                card["_route"] = "memory_relations"
+            return cards
         finally:
             conn.close()
 

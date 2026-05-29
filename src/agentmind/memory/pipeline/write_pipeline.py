@@ -32,6 +32,7 @@ class WritePipeline:
         from agentmind.memory.components.content_hasher import ContentHasher
         from agentmind.memory.components.importance_scorer import ImportanceScorer
         from agentmind.memory.components.chunker import Chunker
+        from agentmind.memory.components.core_memory_manager import CoreMemoryManager
 
         content = entry.content
         if not content or not content.strip():
@@ -88,6 +89,9 @@ class WritePipeline:
                 )
                 row = await self._write_raw_and_card(chunk_entry)
                 created_ids.append(row.get("memory_id") or chunk_entry.memory_id)
+
+        if CoreMemoryManager.is_candidate(entry):
+            await self._repository.write_core_candidate(entry)
 
         # 7-9. 异步步骤 (fire-and-forget，防止 GC)
         task = asyncio.create_task(self._async_enrich(entry, content, created_ids))
@@ -162,14 +166,6 @@ class WritePipeline:
                 await self._repository.write_relations(entry.user_id, all_relations)
         except Exception as e:
             logger.debug("异步关系抽取失败: %s", e)
-
-        # 9. Core Memory 候选检测
-        try:
-            from agentmind.memory.components.core_memory_manager import CoreMemoryManager
-            if CoreMemoryManager.is_candidate(entry):
-                await self._repository.write_core_candidate(entry)
-        except Exception as e:
-            logger.debug("异步 Core Memory 候选失败: %s", e)
 
     async def _capacity_check(self):
         """容量检查：超过 max_entries 时 LRU 淘汰。"""

@@ -1,42 +1,28 @@
 """Memory card conflict detection."""
 
-import asyncio
-import json
-
 
 class MemoryConflictDetector:
     """Detect conservative conflicts between memory cards."""
 
-    def __init__(self, store):
-        self._store = store
+    def __init__(self, repository):
+        self._repository = repository
 
     async def detect_for_memory(self, memory_id: str) -> list[dict]:
-        return await asyncio.to_thread(self._detect_for_memory_sync, memory_id)
-
-    def _detect_for_memory_sync(self, memory_id: str) -> list[dict]:
-        current = self._store._get_memory_card_sync(memory_id)
+        current = await self._repository.get_card(memory_id)
         if current is None:
             return []
 
         conflicts = []
-        conn = self._store._get_conn()
-        try:
-            rows = conn.execute(
-                """SELECT * FROM memory_cards
-                   WHERE user_id=? AND memory_id != ?""",
-                (current.get("user_id", ""), memory_id),
-            ).fetchall()
-            for row in rows:
-                other = self._store._row_to_memory_card(row)
-                reason = self._conflict_reason(current, other)
-                if not reason:
-                    continue
-                self._mark_conflict(conn, current, other, reason)
-                self._mark_conflict(conn, other, current, reason)
-                conflicts.append({"memory_id": other["memory_id"], "reason": reason})
-            conn.commit()
-        finally:
-            conn.close()
+        peer_cards = await self._repository.list_peer_cards(
+            current.get("user_id", ""), exclude_memory_id=memory_id
+        )
+        for other in peer_cards:
+            reason = self._conflict_reason(current, other)
+            if not reason:
+                continue
+            await self._repository.mark_card_conflict(current, other, reason)
+            await self._repository.mark_card_conflict(other, current, reason)
+            conflicts.append({"memory_id": other["memory_id"], "reason": reason})
         return conflicts
 
     def _conflict_reason(self, current: dict, other: dict) -> str:
@@ -58,19 +44,3 @@ class MemoryConflictDetector:
     @staticmethod
     def _card_text(card: dict) -> str:
         return f"{card.get('summary', '')}\n{card.get('card_text', '')}".lower()
-
-    def _mark_conflict(self, conn, card: dict, other: dict, reason: str):
-        score_metadata = dict(card.get("score_metadata") or {})
-        conflicts = score_metadata.setdefault("conflicts", [])
-        if any(item.get("memory_id") == other["memory_id"] for item in conflicts):
-            return
-        conflicts.append({
-            "memory_id": other["memory_id"],
-            "reason": reason,
-            "source_agent": other.get("source_agent", ""),
-            "source_task_id": other.get("source_task_id", ""),
-        })
-        conn.execute(
-            "UPDATE memory_cards SET score_metadata=?, updated_at=datetime('now') WHERE memory_id=?",
-            (json.dumps(score_metadata, ensure_ascii=False), card["memory_id"]),
-        )

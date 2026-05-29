@@ -51,7 +51,7 @@ class MemoryService:
     async def _detect_conflicts(self, memory_ids: list[str]):
         try:
             from agentmind.memory.conflict_detector import MemoryConflictDetector
-            detector = MemoryConflictDetector(self._store)
+            detector = MemoryConflictDetector(self._repository)
             for memory_id in memory_ids:
                 await detector.detect_for_memory(memory_id)
         except Exception as e:
@@ -219,17 +219,17 @@ class MemoryService:
     # ── 统计 & 清理 ──
 
     async def get_memory_stats(self) -> dict:
-        return await self._store.get_stats()
+        return await self._repository.get_stats()
 
     async def cleanup_memory(self, retention_days: int = 30) -> int:
         """清理过期记忆，返回删除数。"""
-        deleted = await self._store.cleanup_memory(retention_days=retention_days)
+        deleted = await self._repository.cleanup_memory(retention_days=retention_days)
         if deleted:
             logger.info("清理记忆：%d 条", deleted)
         return deleted
 
     async def delete_memory(self, memory_id: str) -> bool:
-        return await self._store.delete(memory_id)
+        return await self._repository.delete(memory_id)
 
     # ── 会话管理 ──
 

@@ -247,6 +247,98 @@ class SqliteMemoryRepository:
         finally:
             conn.close()
 
+    async def get_stats(self) -> dict:
+        return await asyncio.to_thread(self._get_stats_sync)
+
+    def _get_stats_sync(self) -> dict:
+        conn = self._get_conn()
+        try:
+            total = conn.execute("SELECT COUNT(*) as cnt FROM memory_cards").fetchone()["cnt"]
+            by_source = {
+                (row["source_agent"] or "unknown"): row["cnt"]
+                for row in conn.execute(
+                    "SELECT source_agent, COUNT(*) as cnt FROM memory_cards GROUP BY source_agent"
+                ).fetchall()
+            }
+            by_type = {
+                (row["memory_type"] or "episodic"): row["cnt"]
+                for row in conn.execute(
+                    "SELECT memory_type, COUNT(*) as cnt FROM memory_cards GROUP BY memory_type"
+                ).fetchall()
+            }
+            by_access = {
+                (row["access_level"] or "shared"): row["cnt"]
+                for row in conn.execute(
+                    "SELECT access_level, COUNT(*) as cnt FROM memory_cards GROUP BY access_level"
+                ).fetchall()
+            }
+            latest = conn.execute(
+                "SELECT created_at FROM memory_cards ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            with_embedding = 0
+            try:
+                with_embedding = conn.execute("SELECT COUNT(*) as cnt FROM vec_memory").fetchone()["cnt"]
+            except Exception:
+                pass
+            return {
+                "total": total,
+                "by_source_agent": by_source,
+                "by_type": by_type,
+                "by_access_level": by_access,
+                "by_heat": {"hot": 0, "warm": 0, "cold": total},
+                "latest_at": latest["created_at"] if latest else None,
+                "vector_search_enabled": bool(with_embedding),
+                "with_embedding": with_embedding,
+            }
+        finally:
+            conn.close()
+
+    async def cleanup_memory(self, retention_days: int = 30) -> int:
+        return await asyncio.to_thread(self._cleanup_memory_sync, retention_days)
+
+    def _cleanup_memory_sync(self, retention_days: int = 30) -> int:
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT memory_id, raw_memory_id FROM memory_cards WHERE created_at <= datetime(?, ?)",
+                (_now_sqlite(), f"-{retention_days} days"),
+            ).fetchall()
+            if not rows:
+                return 0
+            for row in rows:
+                self._delete_card_and_raw_sync(row["memory_id"], row["raw_memory_id"], conn)
+            conn.commit()
+            return len(rows)
+        finally:
+            conn.close()
+
+    async def delete(self, memory_id: str) -> bool:
+        return await asyncio.to_thread(self._delete_sync, memory_id)
+
+    def _delete_sync(self, memory_id: str) -> bool:
+        conn = self._get_conn()
+        try:
+            card = self._get_card_sync(memory_id, conn=conn)
+            raw_memory_id = (card or {}).get("raw_memory_id") or memory_id
+            self._delete_card_and_raw_sync(memory_id, raw_memory_id, conn)
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    def _delete_card_and_raw_sync(self, memory_id: str, raw_memory_id: str, conn) -> None:
+        conn.execute(
+            "DELETE FROM memory_cards WHERE memory_id=? OR raw_memory_id=?",
+            (memory_id, raw_memory_id),
+        )
+        conn.execute("DELETE FROM raw_memory WHERE memory_id=?", (raw_memory_id,))
+        conn.execute("DELETE FROM result_sets WHERE memory_ids LIKE ?", (f"%{memory_id}%",))
+        conn.execute("DELETE FROM memory_relations WHERE head_memory_id=? OR tail_memory_id=?", (memory_id, memory_id))
+        try:
+            conn.execute("DELETE FROM vec_memory WHERE memory_id=?", (memory_id,))
+        except Exception:
+            pass
+
     async def get_raw(self, raw_memory_id: str, user_id: str = "") -> dict | None:
         return await asyncio.to_thread(self._get_raw_sync, raw_memory_id, user_id)
 
@@ -266,6 +358,74 @@ class SqliteMemoryRepository:
             if row is None:
                 return None
             return self._row_to_raw(row)
+        finally:
+            conn.close()
+
+    async def get_card(self, memory_id: str) -> dict | None:
+        return await asyncio.to_thread(self._get_card_sync, memory_id)
+
+    async def list_peer_cards(self, user_id: str, exclude_memory_id: str = "") -> list[dict]:
+        return await asyncio.to_thread(self._list_peer_cards_sync, user_id, exclude_memory_id)
+
+    def _list_peer_cards_sync(self, user_id: str, exclude_memory_id: str = "") -> list[dict]:
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                """SELECT * FROM memory_cards
+                   WHERE user_id=? AND memory_id != ?
+                   ORDER BY created_at DESC, memory_id ASC""",
+                (user_id, exclude_memory_id),
+            ).fetchall()
+            return [self._row_to_card(row) for row in rows]
+        finally:
+            conn.close()
+
+    async def mark_card_conflict(self, card: dict, other: dict, reason: str) -> None:
+        await asyncio.to_thread(self._mark_card_conflict_sync, card, other, reason)
+
+    def _mark_card_conflict_sync(self, card: dict, other: dict, reason: str) -> None:
+        score_metadata = dict(card.get("score_metadata") or {})
+        conflicts = score_metadata.setdefault("conflicts", [])
+        if any(item.get("memory_id") == other["memory_id"] for item in conflicts):
+            return
+        conflicts.append({
+            "memory_id": other["memory_id"],
+            "reason": reason,
+            "source_agent": other.get("source_agent", ""),
+            "source_task_id": other.get("source_task_id", ""),
+        })
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE memory_cards SET score_metadata=?, updated_at=datetime('now') WHERE memory_id=?",
+                (json.dumps(score_metadata, ensure_ascii=False), card["memory_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    async def read_core_memory(self, user_id: str) -> str:
+        return await asyncio.to_thread(self._read_core_memory_sync, user_id)
+
+    def read_core_memory_sync(self, user_id: str) -> str:
+        return self._read_core_memory_sync(user_id)
+
+    def _read_core_memory_sync(self, user_id: str) -> str:
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT slot_key, slot_value FROM core_memory WHERE user_id=? AND status='confirmed'",
+                (user_id or "default",),
+            ).fetchall()
+            parts = []
+            for row in rows:
+                try:
+                    value = json.loads(row["slot_value"])
+                    content = value.get("content", "") if isinstance(value, dict) else str(value)
+                except (json.JSONDecodeError, TypeError):
+                    content = row["slot_value"] or ""
+                parts.append(f"[{row['slot_key']}] {content[:200]}")
+            return "\n".join(parts)
         finally:
             conn.close()
 

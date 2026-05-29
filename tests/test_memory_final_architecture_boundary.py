@@ -19,6 +19,9 @@ def test_memory_service_production_path_does_not_call_legacy_store_runtime_metho
         "self._store._get_conn(",
         "self._store._get_memory_card_sync",
         "self._store._get_raw_memory_sync",
+        "self._store.get_stats(",
+        "self._store.cleanup_memory(",
+        "self._store.delete(",
         "SessionService(self._store)",
     )
 
@@ -58,6 +61,33 @@ def test_write_pipeline_storage_actions_go_through_repository_boundary():
         "CoreMemoryManager.upsert(self._store",
         "ConversationMerger().find_or_create",
         "merger.find_or_create(",
+    )
+
+    offenders = [pattern for pattern in forbidden if pattern in text]
+
+    assert offenders == []
+
+
+def test_conflict_detector_storage_actions_go_through_repository_boundary():
+    text = _read("memory/conflict_detector.py")
+
+    forbidden = (
+        "self._store._get_memory_card_sync",
+        "self._store._get_conn(",
+        "self._store._row_to_memory_card",
+    )
+
+    offenders = [pattern for pattern in forbidden if pattern in text]
+
+    assert offenders == []
+
+
+def test_legacy_recall_pipeline_has_no_store_runtime_fallback():
+    text = _read("memory/pipeline/recall.py")
+
+    forbidden = (
+        "return await self._store.search(",
+        "self._store._get_conn(",
     )
 
     offenders = [pattern for pattern in forbidden if pattern in text]

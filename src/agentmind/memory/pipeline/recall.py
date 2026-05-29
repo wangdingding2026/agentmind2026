@@ -1,6 +1,10 @@
-"""RetrievalPipeline — 7 步检索流水线编排器"""
+"""Legacy-compatible retrieval pipeline wrapper.
 
-import json
+Canonical prompt retrieval is handled by MemoryService.retrieve_context().
+This class remains for callers that still import RetrievalPipeline during
+migration, but runtime storage reads must go through MemoryService/repository.
+"""
+
 import logging
 from dataclasses import dataclass, field
 
@@ -27,6 +31,7 @@ class RetrievalPipeline:
     def __init__(self, store, memory_service: "MemoryService" = None):
         self._store = store
         self._service = memory_service
+        self._repository = getattr(memory_service, "_repository", None)
 
     async def retrieve(
         self, message: str, user_id: str, settings: dict
@@ -36,12 +41,13 @@ class RetrievalPipeline:
 
         # Step 1: Core Memory
         core_text = ""
-        try:
-            core_text = self._read_core_memory(user_id)
-            if core_text:
-                steps.append("core_memory")
-        except Exception as e:
-            logger.debug("Core Memory 读取失败: %s", e)
+        if self._repository:
+            try:
+                core_text = await self._repository.read_core_memory(user_id)
+                if core_text:
+                    steps.append("core_memory")
+            except Exception as e:
+                logger.debug("Core Memory 读取失败: %s", e)
 
         # Step 2: Working Memory
         working = []
@@ -135,7 +141,7 @@ class RetrievalPipeline:
                 limit=search_query.limit,
             )
             return [self._dict_to_search_result(row) for row in rows]
-        return await self._store.search(search_query)
+        return []
 
     def _active_conversation_id(self, user_id: str) -> str:
         if not self._service:
@@ -153,28 +159,6 @@ class RetrievalPipeline:
             score=float(row.get("_score") or 0.0),
             route=row.get("_route", ""),
         )
-
-    def _read_core_memory(self, user_id: str) -> str:
-        conn = self._store._get_conn()
-        try:
-            rows = conn.execute(
-                "SELECT slot_key, slot_value FROM core_memory WHERE user_id=? AND status='confirmed'",
-                (user_id or "default",),
-            ).fetchall()
-            if not rows:
-                return ""
-            parts = []
-            for r in rows:
-                try:
-                    val = json.loads(r["slot_value"])
-                    content = val.get("content", "") if isinstance(val, dict) else str(val)
-                    slot = r["slot_key"]
-                    parts.append(f"[{slot}] {content[:200]}")
-                except (json.JSONDecodeError, TypeError):
-                    parts.append(r["slot_value"][:200] if r["slot_value"] else "")
-            return "\n".join(parts)
-        finally:
-            conn.close()
 
     @staticmethod
     def _apply_date_filter(

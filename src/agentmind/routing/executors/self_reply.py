@@ -125,18 +125,7 @@ class SelfReplyExecutor(ExecutorBase):
         """查询用户当前活跃的 conversation_id，若无则返回空字符串。"""
         try:
             from agentmind.memory.service import MemoryService
-            store = MemoryService().store
-            conn = store._get_conn()
-            try:
-                row = conn.execute(
-                    """SELECT conversation_id FROM conversations
-                       WHERE user_id=? AND status='active'
-                       ORDER BY last_message_at DESC LIMIT 1""",
-                    (user_id,),
-                ).fetchone()
-                return row["conversation_id"] if row else ""
-            finally:
-                conn.close()
+            return MemoryService().get_active_conversation_id(user_id) or ""
         except Exception:
             return ""
 

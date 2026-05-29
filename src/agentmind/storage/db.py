@@ -97,82 +97,11 @@ def _try_load_sqlite_vec():
 
 def initialize_memory_db():
     """初始化记忆数据库 memory.db，含向量搜索和 FTS5 全文索引"""
-    conn = sqlite3.connect(str(DATA_DIR / "memory.db"), timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-
-    # 核心表
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS memory_entries (
-            memory_id TEXT PRIMARY KEY,
-            content TEXT NOT NULL,
-            summary TEXT NOT NULL,
-            source_agent TEXT NOT NULL,
-            source_task_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            access_level TEXT NOT NULL DEFAULT 'shared',
-            tags TEXT,
-            version INTEGER DEFAULT 1
-        )
-    """)
-
-    # 新增列（迁移兼容）
-    for col, col_def in [
-        ("embedding", "BLOB"),
-        ("user_id", "TEXT"),
-        ("last_accessed_at", "TEXT"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE memory_entries ADD COLUMN {col} {col_def}")
-        except Exception:
-            pass
-
-    # 索引
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_source ON memory_entries(source_agent, created_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_user ON memory_entries(user_id, created_at)")
-
-    # FTS5 全文搜索虚拟表（独立表，手动同步）
-    conn.execute("""
-        CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
-            memory_id, content, summary, tags
-        )
-    """)
-
-    # sqlite-vec 向量索引
-    vec = _try_load_sqlite_vec()
-    if vec is not None:
-        try:
-            conn.enable_load_extension(True)
-            vec.load(conn)
-            # 读取 embedding_dim 配置
-            import yaml
-            dim = 384
-            settings_path = CONFIG_DIR / "settings.yaml"
-            if settings_path.exists():
-                try:
-                    data = yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
-                    if isinstance(data, dict):
-                        emb_cfg = data.get("embedding", {})
-                        dim = int(emb_cfg.get("dimension", 768))
-                except Exception:
-                    pass
-            conn.execute(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS vec_memory USING vec0("
-                f"  memory_id TEXT PRIMARY KEY, embedding FLOAT[{dim}]"
-                ")"
-            )
-        except Exception:
-            pass  # sqlite-vec 不可用时静默跳过
-
-    conn.commit()
-    conn.close()
-
-    # v4 迁移：尝试将 schema 从 v1 升级到 v2
     try:
-        from agentmind.memory.migrations.runner import ensure_memory_layer_tables, migrate_v1_to_v2
-        migrate_v1_to_v2(str(DATA_DIR / "memory.db"))
-        ensure_memory_layer_tables(str(DATA_DIR / "memory.db"))
+        from agentmind.memory.schema import initialize_memory_storage
+        initialize_memory_storage(str(DATA_DIR / "memory.db"))
     except Exception as e:
-        logger.debug("v4 迁移跳过: %s", e)
+        logger.debug("memory schema 初始化跳过: %s", e)
 
 
 def is_vec_available() -> bool:

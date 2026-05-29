@@ -44,6 +44,8 @@ class SqliteMemoryStore(IMemoryStore):
         else:
             from agentmind.storage import db as storage_db
             self._db_path = str(storage_db.DATA_DIR / "memory.db")
+        from agentmind.memory.schema import initialize_memory_storage
+        initialize_memory_storage(self._db_path)
 
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path, timeout=10)

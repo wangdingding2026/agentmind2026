@@ -13,11 +13,15 @@ logger = logging.getLogger("agentmind")
 class MemoryService:
     """v4 记忆引擎服务单例。封装写入/检索/统计/清理/会话管理。"""
 
-    def __init__(self, store=None):
+    def __init__(self, store=None, repository=None):
         if store is None:
             from agentmind.memory.sqlite_store import SqliteMemoryStore
             store = SqliteMemoryStore()
+        if repository is None:
+            from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+            repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
         self._store = store
+        self._repository = repository
 
     # ── 写入 ──
 
@@ -117,7 +121,9 @@ class MemoryService:
             return
         try:
             from agentmind.services.result_set_service import ResultSetService
-            result_set_id = await ResultSetService(self._store).create_result_set(
+            result_set_id = await ResultSetService(
+                self._store, repository=self._repository
+            ).create_result_set(
                 user_id=user_id,
                 query_text=query,
                 memory_ids=[r["memory_id"] for r in rows],
@@ -190,7 +196,7 @@ class MemoryService:
         result_set_id: str = "",
     ) -> dict | None:
         from agentmind.services.result_set_service import ResultSetService
-        svc = ResultSetService(self._store)
+        svc = ResultSetService(self._store, repository=self._repository)
         target_result_set_id = result_set_id or await svc.get_latest_result_set_id(user_id)
         if not target_result_set_id:
             return None
@@ -206,7 +212,7 @@ class MemoryService:
         page_size: int = 5,
     ) -> dict | None:
         from agentmind.services.result_set_service import ResultSetService
-        svc = ResultSetService(self._store)
+        svc = ResultSetService(self._store, repository=self._repository)
         target_result_set_id = result_set_id or await svc.get_latest_result_set_id(user_id)
         if not target_result_set_id:
             return None
@@ -242,7 +248,10 @@ class MemoryService:
         return SessionService(self._store).get_active_session(user_id)
 
     def get_active_conversation_id(self, user_id: str) -> str | None:
-        return SessionService(self._store).get_active_conversation_id(user_id)
+        try:
+            return self._repository.get_active_conversation_id_sync(user_id) or None
+        except Exception:
+            return SessionService(self._store).get_active_conversation_id(user_id)
 
     def _clear_working_memory(self, user_id: str):
         """清空用户的 Working Memory（内存 LRU 缓存）。"""
@@ -291,4 +300,5 @@ class MemoryService:
 
     @property
     def store(self):
+        # Migration-only compatibility for legacy callers; remove in Phase 9.
         return self._store

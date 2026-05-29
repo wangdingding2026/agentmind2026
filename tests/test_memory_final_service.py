@@ -142,3 +142,69 @@ async def test_write_memory_dedup_reports_zero_and_does_not_expose_missing_new_i
     assert second_count == 0
     assert await repo.get_card("dedup-new-id") is None
     assert [row["memory_id"] for row in rows] == ["dedup-original"]
+
+
+@pytest.mark.asyncio
+async def test_write_memory_runs_relation_enrichment_before_return(tmp_path, monkeypatch):
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    calls = []
+
+    class FakeRelationExtractor:
+        async def extract(self, memory_id, content):
+            calls.append((memory_id, content))
+            return [(memory_id, "references", "检索策略", "", 0.8)]
+
+    monkeypatch.setattr(
+        "agentmind.memory.components.relation_extractor.RelationExtractor",
+        FakeRelationExtractor,
+    )
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    count = await svc.write_memory({
+        "memory_id": "enrich-sync-1",
+        "content": "参考：检索策略",
+        "summary": "检索策略参考",
+        "user_id": "u_enrich",
+        "memory_type": "semantic",
+    })
+    related = await repo.related_cards_for_query("检索策略", "u_enrich", limit=5)
+
+    assert count == 1
+    assert calls == [("enrich-sync-1", "参考：检索策略")]
+    assert [row["memory_id"] for row in related] == ["enrich-sync-1"]
+
+
+@pytest.mark.asyncio
+async def test_write_memory_keeps_raw_card_when_relation_enrichment_fails(tmp_path, monkeypatch):
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    calls = []
+
+    class FailingRelationExtractor:
+        async def extract(self, memory_id, content):
+            calls.append(memory_id)
+            raise RuntimeError("relation extractor unavailable")
+
+    monkeypatch.setattr(
+        "agentmind.memory.components.relation_extractor.RelationExtractor",
+        FailingRelationExtractor,
+    )
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    count = await svc.write_memory({
+        "memory_id": "enrich-fail-1",
+        "content": "参考：失败也要保留主记忆",
+        "summary": "富化失败主写入保留",
+        "user_id": "u_enrich_fail",
+        "memory_type": "semantic",
+    })
+
+    assert count == 1
+    assert calls == ["enrich-fail-1"]
+    assert await repo.get_card("enrich-fail-1") is not None
+    assert await repo.get_raw("enrich-fail-1", user_id="u_enrich_fail") is not None

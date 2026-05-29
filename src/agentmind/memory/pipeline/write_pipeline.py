@@ -1,6 +1,4 @@
 """Canonical memory write pipeline."""
-
-import asyncio
 import logging
 
 from agentmind.memory.dto import MemoryWriteCommand
@@ -15,14 +13,13 @@ logger = logging.getLogger("agentmind")
 
 
 class WritePipeline:
-    """10 步写入流水线。同步步骤(1-6,10) + 异步步骤(7-9, fire-and-forget)。"""
+    """10 步写入流水线。raw/card 主写入优先，富化受控执行。"""
 
     def __init__(self, store=None, repository=None):
         if repository is None:
             from agentmind.memory.repository_sqlite import SqliteMemoryRepository
             repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
         self._repository = repository
-        self._pending_tasks: set = set()  # 防止异步任务被 GC
 
     async def execute(self, entry: MemoryEntry, force_new_conversation: bool = False) -> list[str]:
         """
@@ -92,10 +89,8 @@ class WritePipeline:
         if CoreMemoryManager.is_candidate(entry):
             await self._repository.write_core_candidate(entry)
 
-        # 7-9. 异步步骤 (fire-and-forget，防止 GC)
-        task = asyncio.create_task(self._async_enrich(entry, content, created_ids))
-        self._pending_tasks.add(task)
-        task.add_done_callback(self._pending_tasks.discard)
+        # 7-9. 受控富化。失败只记录日志，不影响 raw/card 主写入。
+        await self._async_enrich(entry, content, created_ids)
 
         # 10. 容量检查
         await self._capacity_check()

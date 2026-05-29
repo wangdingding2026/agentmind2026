@@ -43,7 +43,7 @@ class SqliteMemoryRepository:
         return await asyncio.to_thread(self._write_raw_and_card_sync, command)
 
     def _write_raw_and_card_sync(self, command: MemoryWriteCommand) -> dict:
-        memory_id = f"mem-{uuid.uuid4().hex[:16]}"
+        memory_id = command.memory_id or f"mem-{uuid.uuid4().hex[:16]}"
         raw_memory_id = memory_id
         now = command.created_at or _now_sqlite()
         tags_json = json.dumps(command.tags, ensure_ascii=False)

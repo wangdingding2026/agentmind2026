@@ -72,6 +72,8 @@ async def test_memory_service_write_populates_layers_without_changing_search():
 
     rows = await svc.search_memory(query="compatibility", user_id="u1", limit=5)
     card = await svc.store.get_memory_card("svc-layer-1")
+    legacy = await svc.store.get("svc-layer-1")
 
     assert any(r["memory_id"] == "svc-layer-1" for r in rows)
     assert card["summary"] == "compatibility search"
+    assert legacy is None

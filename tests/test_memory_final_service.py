@@ -59,3 +59,37 @@ async def test_search_memory_does_not_fallback_to_legacy_entries_when_cards_empt
     ).search_memory("没有卡片", user_id="u1")
 
     assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_write_memory_creates_raw_and_card_without_legacy_entry(tmp_path):
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+
+    count = await svc.write_memory({
+        "memory_id": "task-1",
+        "content": "部署端口是 8765。",
+        "summary": "部署端口 8765",
+        "user_id": "u1",
+        "source_agent": "codex",
+        "source_task_id": "trace-1",
+    })
+
+    conn = repo.connect_sync()
+    try:
+        legacy_count = conn.execute(
+            "SELECT COUNT(*) FROM memory_entries WHERE memory_id=?",
+            ("task-1",),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    rows = await repo.search_cards(query="8765", user_id="u1")
+
+    assert count == 1
+    assert rows
+    assert rows[0]["memory_id"] == "task-1"
+    assert legacy_count == 0

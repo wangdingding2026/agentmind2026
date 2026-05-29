@@ -16,7 +16,7 @@ class MemoryService:
     def __init__(self, store=None, repository=None):
         if store is None:
             from agentmind.memory.sqlite_store import SqliteMemoryStore
-            store = SqliteMemoryStore()
+            store = SqliteMemoryStore(getattr(repository, "_db_path", ""))
         if repository is None:
             from agentmind.memory.repository_sqlite import SqliteMemoryRepository
             repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
@@ -45,7 +45,7 @@ class MemoryService:
                 _, created = session.ensure_active_session(mem.user_id)
                 force_new = created
 
-        pipeline = WritePipeline(self._store)
+        pipeline = WritePipeline(self._store, repository=self._repository)
         ids = await pipeline.execute(mem, force_new_conversation=force_new)
         await self._detect_conflicts(ids)
         return len(ids)

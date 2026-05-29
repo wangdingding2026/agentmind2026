@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from agentmind.memory.dto import MemoryWriteCommand
 from agentmind.memory.provider import (
     MemoryEmbeddingProvider,
     embedding_to_blob,
@@ -17,8 +18,12 @@ logger = logging.getLogger("agentmind")
 class WritePipeline:
     """10 步写入流水线。同步步骤(1-6,10) + 异步步骤(7-9, fire-and-forget)。"""
 
-    def __init__(self, store):
+    def __init__(self, store, repository=None):
         self._store = store
+        if repository is None:
+            from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+            repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
+        self._repository = repository
         self._pending_tasks: set = set()  # 防止异步任务被 GC
 
     async def execute(self, entry: MemoryEntry, force_new_conversation: bool = False) -> list[str]:
@@ -70,8 +75,8 @@ class WritePipeline:
         # 6. 同步 INSERT
         created_ids = []
         if len(chunks) == 1:
-            await self._store.insert(entry)
-            created_ids.append(entry.memory_id)
+            row = await self._write_raw_and_card(entry)
+            created_ids.append(row.get("memory_id") or entry.memory_id)
         else:
             for i, chunk_text in enumerate(chunks):
                 chunk_entry = MemoryEntry(
@@ -91,8 +96,8 @@ class WritePipeline:
                     tags=entry.tags,
                     access_level=entry.access_level,
                 )
-                await self._store.insert(chunk_entry)
-                created_ids.append(chunk_entry.memory_id)
+                row = await self._write_raw_and_card(chunk_entry)
+                created_ids.append(row.get("memory_id") or chunk_entry.memory_id)
 
         # 7-9. 异步步骤 (fire-and-forget，防止 GC)
         task = asyncio.create_task(self._async_enrich(entry, content, created_ids))
@@ -103,6 +108,22 @@ class WritePipeline:
         await self._capacity_check()
 
         return created_ids if created_ids else [entry.memory_id]
+
+    async def _write_raw_and_card(self, entry: MemoryEntry) -> dict:
+        command = MemoryWriteCommand(
+            memory_id=entry.memory_id,
+            content=entry.content,
+            summary=entry.summary,
+            user_id=entry.user_id,
+            source_agent=entry.source_agent,
+            source_task_id=entry.source_task_id,
+            conversation_id=entry.conversation_id,
+            tags=entry.tags,
+            memory_type=entry.memory_type.value,
+            access_level=entry.access_level,
+            created_at=entry.created_at,
+        )
+        return await self._repository.write_raw_and_card(command)
 
     def _classify_type(self, content: str) -> MemoryType:
         """基于关键词的简单类型识别。"""
@@ -115,19 +136,15 @@ class WritePipeline:
     async def _dedup_check(self, entry: MemoryEntry) -> bool:
         """检查是否已存在相似记忆。"""
         try:
-            from agentmind.memory.types import SearchQuery
-            results = await self._store.search(
-                SearchQuery(query_text=entry.content[:200], user_id=entry.user_id, limit=5)
+            results = await self._repository.search_cards(
+                query=entry.content[:200],
+                user_id=entry.user_id,
+                limit=5,
             )
-            from agentmind.memory.components.content_hasher import ContentHasher
-            current_hash = int(entry.content_hash)
             for r in results:
-                try:
-                    existing_hash = int(r.entry.content_hash)
-                    if ContentHasher.is_similar(current_hash, existing_hash, threshold=3):
-                        return True
-                except (ValueError, TypeError):
-                    pass
+                card_text = r.get("card_text") or r.get("summary") or ""
+                if entry.content and entry.content.strip() in card_text:
+                    return True
         except Exception:
             pass
         return False
@@ -197,31 +214,8 @@ class WritePipeline:
         try:
             settings = read_memory_settings()
             max_entries = settings.get("memory", {}).get("max_entries", 10000)
-            total = await self._store.count()
-            if total >= max_entries:
-                evict_count = max(1, int(total * 0.1))
-                conn = self._store._get_conn()
-                try:
-                    rows = conn.execute(
-                        "SELECT memory_id FROM memory_entries ORDER BY created_at ASC LIMIT ?",
-                        (evict_count,),
-                    ).fetchall()
-                    for r in rows:
-                        mid = r["memory_id"]
-                        conn.execute("DELETE FROM memory_entries WHERE memory_id=?", (mid,))
-                        try:
-                            conn.execute("DELETE FROM memory_fts WHERE memory_id=?", (mid,))
-                        except Exception:
-                            pass
-                        if is_vec_available():
-                            try:
-                                conn.execute("DELETE FROM vec_memory WHERE memory_id=?", (mid,))
-                            except Exception:
-                                pass
-                    conn.commit()
-                    logger.info("LRU 淘汰：%d 条", len(rows))
-                finally:
-                    conn.close()
+            if max_entries <= 0:
+                return
         except Exception as e:
             logger.debug("容量检查失败: %s", e)
 

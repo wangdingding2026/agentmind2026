@@ -82,7 +82,7 @@ async def test_memory_service_uses_session_service_force_new_flag(monkeypatch):
             return "sess-existing", False
 
     class FakeWritePipeline:
-        def __init__(self, store):
+        def __init__(self, store, repository=None):
             pass
 
         async def execute(self, mem, force_new_conversation=False):

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 @dataclass
 class MemoryWriteCommand:
     content: str
+    memory_id: str = ""
     summary: str = ""
     user_id: str = ""
     source_agent: str = ""

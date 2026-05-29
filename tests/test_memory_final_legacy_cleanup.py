@@ -20,6 +20,7 @@ TRANSITIONAL_LEGACY_FILES = {
     "memory/components/importance_scorer.py",
     "memory/conflict_detector.py",
     "memory/dto.py",
+    "memory/maintenance.py",
     "memory/pipeline/write_pipeline.py",
     "memory/schema.py",
     "memory/service.py",

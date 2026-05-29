@@ -36,6 +36,9 @@ class SqliteMemoryRepository:
         conn.execute("PRAGMA busy_timeout = 5000")
         return conn
 
+    def connect_sync(self) -> sqlite3.Connection:
+        return self._get_conn()
+
     async def write_raw_and_card(self, command: MemoryWriteCommand) -> dict:
         return await asyncio.to_thread(self._write_raw_and_card_sync, command)
 

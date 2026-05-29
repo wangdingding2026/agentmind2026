@@ -7,6 +7,7 @@ ALLOWED_LEGACY_MEMORY_FILES = {
     "storage/memory.py",
     "storage/db.py",
     "memory/sqlite_store.py",
+    "memory/maintenance.py",
     "memory/pipeline/write_pipeline.py",
     "memory/components/importance_scorer.py",
     "services/trace_service.py",

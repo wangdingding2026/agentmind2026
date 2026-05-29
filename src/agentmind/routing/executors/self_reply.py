@@ -161,8 +161,6 @@ class SelfReplyExecutor(ExecutorBase):
             return decision.reply_text
 
         memories = decision.context.memories if decision.context else []
-        # 过滤 v4 assembled 哨兵对象（不是真实记忆）
-        memories = [m for m in memories if not m.get("_v4_assembled")]
 
         # 检测"当前会话"语义：过滤仅保留当前 active conversation 的记忆
         if is_current_session_query:

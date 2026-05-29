@@ -68,40 +68,36 @@ async def test_memory_writer_uses_memory_service_for_task_memory(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_memory_retriever_uses_memory_service_search_for_fallback(monkeypatch):
+async def test_memory_retriever_uses_memory_service_retrieve_context(monkeypatch):
+    from agentmind.memory.dto import MemoryContext
     from agentmind.routing.middleware.memory_retriever import MemoryRetriever
 
     calls = []
 
     class FakeMemoryService:
-        async def retrieve(self, message, user_id="", settings=None):
-            return {"assembled_context": "", "recall_items": [], "steps": ["v4_disabled"]}
+        async def retrieve_context(self, message, user_id="", settings=None, limit=5):
+            calls.append((message, user_id, limit))
+            return MemoryContext(
+                assembled_context="context",
+                recall_items=[{"memory_id": "m-1", "content": message}],
+            )
 
-        async def search_memory(
-            self,
-            query="",
-            user_id="",
-            source_agent="",
-            tags=None,
-            access_levels=None,
-            limit=10,
-        ):
-            calls.append((query, user_id, limit))
-            return [{"memory_id": f"m-{len(calls)}", "content": query or "recent"}]
+        async def expand_result(self, result_index, user_id, result_set_id=""):
+            return None
+
+        async def more_results(self, user_id, result_set_id="", page_size=5):
+            return None
 
     monkeypatch.setattr(
         "agentmind.routing.middleware.memory_retriever.MemoryService",
         FakeMemoryService,
     )
-    monkeypatch.setattr(
-        "agentmind.routing.middleware.memory_retriever._use_v4_retrieval",
-        lambda: False,
-    )
 
-    rows = await MemoryRetriever().retrieve("hello world", "u1", limit=2)
+    ctx = await MemoryRetriever().retrieve("hello world", "u1", limit=2)
 
-    assert rows
-    assert calls
+    assert isinstance(ctx, MemoryContext)
+    assert ctx.recall_items
+    assert calls == [("hello world", "u1", 2)]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import logging
 
+from agentmind.memory.dto import MemoryContext
 from agentmind.routing.context import RequestIdentity, RoutingContext, RoutingDecision
 
 logger = logging.getLogger("agentmind")
@@ -29,16 +30,23 @@ class RoutingPipeline:
         candidates = CandidatePool(self._agent_registry).filter(scan_result)
 
         try:
-            memories = await MemoryRetriever().retrieve(message, identity.user_id)
+            memory_result = await MemoryRetriever().retrieve(message, identity.user_id)
         except Exception:
             logger.debug("MemoryRetriever 检索失败，使用空记忆", exc_info=True)
-            memories = []
+            memory_result = []
+        if isinstance(memory_result, MemoryContext):
+            memory_context = memory_result
+            memories = memory_result.recall_items
+        else:
+            memory_context = None
+            memories = memory_result
 
         ctx = RoutingContext(
             identity=identity,
             raw_message=message,
             candidates=candidates,
             memories=memories,
+            memory_context=memory_context,
             security_flagged=scan_result.flagged,
             is_retry=is_retry,
         )

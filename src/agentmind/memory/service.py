@@ -1,8 +1,8 @@
 """MemoryService — v4 记忆引擎统一入口"""
 
-import asyncio
 import logging
 
+from agentmind.memory.dto import MemoryContext
 from agentmind.memory.types import MemoryEntry, MemoryType, SearchQuery
 from agentmind.services.config_service import ConfigService
 from agentmind.services.session_service import SessionService
@@ -261,31 +261,124 @@ class MemoryService:
     async def retrieve(
         self, message: str, user_id: str = "", settings: dict | None = None
     ) -> dict:
-        """v4 7-step 检索流水线。返回 dict 含 assembled_context / recall_items / steps。"""
+        """Compatibility dict wrapper around retrieve_context()."""
+        ctx = await self.retrieve_context(message, user_id=user_id, settings=settings)
+        return {
+            "assembled_context": ctx.assembled_context,
+            "recall_items": ctx.recall_items,
+            "working_memory": ctx.working_memory,
+            "result_set_id": ctx.result_set_id,
+            "steps": ctx.steps,
+            "truncated": ctx.truncated,
+        }
+
+    async def retrieve_context(
+        self,
+        message: str,
+        user_id: str = "",
+        settings: dict | None = None,
+        limit: int = 5,
+    ) -> MemoryContext:
         if settings is None:
             try:
                 settings = ConfigService().read_settings()
             except Exception:
                 settings = {}
-
         mem_cfg = settings.get("memory", {})
-        if not mem_cfg.get("v4_retrieval_enabled", False):
-            return {"assembled_context": "", "recall_items": [], "steps": ["v4_disabled"]}
+        steps = []
 
-        from agentmind.memory.pipeline.recall import RetrievalPipeline
+        working = []
+        if user_id:
+            working = self.get_working_memory(
+                user_id, limit=mem_cfg.get("working_memory_rounds", 3)
+            )
+            if working:
+                steps.append("working_memory")
 
-        pipeline = RetrievalPipeline(self._store, self)
-        result = await pipeline.retrieve(message, user_id, settings)
+        rows = await self.search_memory(
+            query=message,
+            user_id=user_id,
+            access_levels=["shared"],
+            exclude_conversation_id=self.get_active_conversation_id(user_id) if working else "",
+            limit=max(limit, mem_cfg.get("retrieval_max_candidates", limit)),
+        )
+        if not rows:
+            rows = await self.search_memory(
+                query="",
+                user_id=user_id,
+                access_levels=["shared"],
+                exclude_conversation_id=self.get_active_conversation_id(user_id) if working else "",
+                limit=max(limit, mem_cfg.get("retrieval_max_candidates", limit)),
+            )
+            if rows:
+                steps.append("recent_cards")
+        rows = self._dedupe_memory_rows(rows)
+        if rows:
+            steps.append("memory_cards")
 
-        return {
-            "assembled_context": result.assembled_context,
-            "recall_items": [r.to_dict() for r in result.recall_items],
-            "core_memory": result.core_memory,
-            "working_memory": result.working_memory,
-            "rewritten_query": result.rewritten_query.expanded_query if result.rewritten_query else message,
-            "steps": result.steps_executed,
-            "truncated": result.truncated,
-        }
+        expanded_rows = []
+        for row in rows[:3]:
+            expanded = dict(row)
+            raw_memory_id = expanded.get("raw_memory_id") or expanded.get("memory_id", "")
+            try:
+                raw = await self._repository.get_raw(raw_memory_id, user_id=user_id)
+            except Exception:
+                raw = None
+            if raw and raw.get("content"):
+                expanded["content"] = raw["content"]
+            expanded_rows.append(expanded)
+        expanded_rows.extend(rows[3:])
+
+        recall_results = [self._dict_to_search_result(row) for row in expanded_rows]
+        assembled_context = ""
+        truncated = False
+        try:
+            from agentmind.memory.pipeline.assembler import ContextAssembler
+
+            assembled = ContextAssembler().assemble(
+                "",
+                working,
+                recall_results,
+                max_bytes=mem_cfg.get("context_max_bytes", 8192),
+            )
+            assembled_context = assembled.full_text
+            truncated = assembled.truncated
+            steps.append("context_assembler")
+        except Exception as exc:
+            logger.debug("Context assemble failed: %s", exc)
+
+        result_set_id = rows[0].get("_result_set_id", "") if rows else ""
+        return MemoryContext(
+            assembled_context=assembled_context,
+            working_memory=working,
+            recall_items=expanded_rows[:limit],
+            result_set_id=result_set_id,
+            steps=steps,
+            truncated=truncated,
+        )
+
+    @staticmethod
+    def _dedupe_memory_rows(rows: list[dict]) -> list[dict]:
+        seen = set()
+        deduped = []
+        for row in rows:
+            memory_id = row.get("memory_id") or row.get("raw_memory_id")
+            if memory_id in seen:
+                continue
+            seen.add(memory_id)
+            deduped.append(row)
+        return deduped
+
+    @staticmethod
+    def _dict_to_search_result(row: dict):
+        from agentmind.memory.types import SearchResult
+
+        entry = MemoryEntry.from_dict(row)
+        return SearchResult(
+            entry=entry,
+            score=float(row.get("_score") or 0.0),
+            route=row.get("_route", ""),
+        )
 
     @property
     def store(self):

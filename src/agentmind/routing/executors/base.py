@@ -23,7 +23,7 @@ class ExecutorBase(ABC):
         self._gateway = ProtocolGateway(agent_registry)
 
     def _build_envelope(self, ctx: RoutingContext) -> str:
-        return PromptEnvelope.build(ctx.raw_message, ctx.memories)
+        return PromptEnvelope.build(ctx.raw_message, ctx.memory_context or ctx.memories)
 
     def _find_executor(self, agent_id: str):
         if not agent_id:

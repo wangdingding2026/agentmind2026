@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from agentmind.memory.dto import MemoryContext
+
 
 @dataclass
 class RequestIdentity:
@@ -14,6 +16,7 @@ class RoutingContext:
     raw_message: str
     candidates: list[str] = field(default_factory=list)
     memories: list[dict] = field(default_factory=list)
+    memory_context: MemoryContext | None = None
     security_flagged: bool = False
     is_retry: bool = False
 

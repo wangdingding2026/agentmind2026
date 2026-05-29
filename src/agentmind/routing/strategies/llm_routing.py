@@ -66,8 +66,6 @@ class LLMRoutingStrategy(RoutingStrategy):
         if ctx.memories:
             mem_lines = []
             for m in ctx.memories:
-                if m.get("_v4_assembled"):
-                    continue  # 跳过 v4 哨兵对象
                 content = m.get("content", "")[:200]
                 mem_type = m.get("memory_type", "")
                 mem_lines.append(f"- [{mem_type}] {content}")

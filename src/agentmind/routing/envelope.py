@@ -1,3 +1,6 @@
+from agentmind.memory.dto import MemoryContext
+
+
 class PromptEnvelope:
     """将 L0 MemoryRetriever 产出的记忆列表拼接为 Agent 最终 prompt。
 
@@ -5,15 +8,16 @@ class PromptEnvelope:
     """
 
     @staticmethod
-    def build(raw_message: str, memories: list[dict]) -> str:
-        if not memories:
+    def build(raw_message: str, memory_context: MemoryContext | list[dict] | None) -> str:
+        if not memory_context:
             return raw_message
 
-        # v4 预组装 context：第一条记忆携带 _v4_assembled 标记
-        if memories and memories[0].get("_v4_assembled"):
-            context = memories[0].get("_assembled_context", "")
-            if context:
-                return context + "\n\n当前指令：" + raw_message
+        if isinstance(memory_context, MemoryContext):
+            if memory_context.assembled_context:
+                return memory_context.assembled_context + "\n\n当前指令：" + raw_message
+            memories = memory_context.recall_items
+        else:
+            memories = memory_context
 
         parts = []
         for m in memories:

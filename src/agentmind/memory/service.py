@@ -322,6 +322,10 @@ class MemoryService:
             steps.append("relation_cards")
         rows = self._merge_retrieval_rows(keyword_rows, relation_rows, recent_rows)
         rows = self._dedupe_memory_rows(rows)
+        rows = self._rank_retrieval_rows(rows)
+        rows, reranked = await self._rerank_rows(message, rows, mem_cfg)
+        if reranked:
+            steps.append("reranker")
         if rows:
             await self._attach_result_set_metadata(rows, message, user_id)
         if rows:
@@ -379,6 +383,47 @@ class MemoryService:
             seen.add(memory_id)
             deduped.append(row)
         return deduped
+
+    @staticmethod
+    def _rank_retrieval_rows(rows: list[dict]) -> list[dict]:
+        def sort_key(row: dict):
+            try:
+                score = float(row.get("_score") or 0.0)
+            except (TypeError, ValueError):
+                score = 0.0
+            return (-score, row.get("created_at", ""), row.get("memory_id", ""))
+
+        return sorted(rows, key=sort_key)
+
+    async def _rerank_rows(
+        self, message: str, rows: list[dict], mem_cfg: dict
+    ) -> tuple[list[dict], bool]:
+        if not mem_cfg.get("reranker_enabled", False) or len(rows) <= 1:
+            return rows, False
+        try:
+            from agentmind.memory.pipeline.reranker import Reranker
+
+            candidates = [self._dict_to_search_result(row) for row in rows]
+            reranked = await Reranker().rerank(message, candidates, top_k=len(rows))
+        except Exception as exc:
+            logger.debug("Reranker failed: %s", exc)
+            return rows, False
+        by_id = {row.get("memory_id"): row for row in rows}
+        ordered = []
+        seen = set()
+        for item in reranked:
+            memory_id = item.entry.memory_id
+            row = by_id.get(memory_id)
+            if row is None or memory_id in seen:
+                continue
+            row["_score"] = item.score
+            ordered.append(row)
+            seen.add(memory_id)
+        ordered.extend(
+            row for row in rows
+            if row.get("memory_id") not in seen
+        )
+        return ordered, bool(ordered)
 
     @staticmethod
     def _merge_retrieval_rows(*row_groups: list[dict]) -> list[dict]:

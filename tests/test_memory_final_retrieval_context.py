@@ -115,3 +115,127 @@ async def test_retrieve_context_creates_result_set_after_merge_for_recent_only_h
     assert ctx.recall_items[0]["memory_id"] == "recent-only-card"
     assert expanded["memory_id"] == "recent-only-card"
     assert expanded["content"] == "只有最近记忆会召回的完整原文。"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_orders_merged_rows_by_score_before_assembly():
+    from agentmind.memory.service import MemoryService
+
+    repo = FakeRetrievalRepository(
+        keyword_rows=[_card("keyword-low", "keyword result", 0.2)],
+        relation_rows=[_card("relation-high", "relation result", 2.0)],
+        recent_rows=[_card("recent-mid", "recent result", 0.8)],
+    )
+    ctx = await MemoryService(repository=repo).retrieve_context(
+        "ranking query",
+        user_id="u_rank",
+        settings={"memory": {"retrieval_max_candidates": 3, "context_max_bytes": 4096}},
+        limit=3,
+    )
+
+    assert [row["memory_id"] for row in ctx.recall_items] == [
+        "relation-high",
+        "recent-mid",
+        "keyword-low",
+    ]
+    assert repo.result_set_memory_ids == [
+        "relation-high",
+        "recent-mid",
+        "keyword-low",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_uses_reranker_when_enabled(monkeypatch):
+    from agentmind.memory.service import MemoryService
+
+    calls = []
+
+    class FakeReranker:
+        async def rerank(self, query, candidates, top_k=10):
+            calls.append((query, [item.entry.memory_id for item in candidates], top_k))
+            return list(reversed(candidates))
+
+    monkeypatch.setattr("agentmind.memory.pipeline.reranker.Reranker", FakeReranker)
+
+    repo = FakeRetrievalRepository(
+        keyword_rows=[
+            _card("first-by-score", "first before reranker", 2.0),
+            _card("second-by-score", "second before reranker", 1.0),
+        ],
+    )
+    ctx = await MemoryService(repository=repo).retrieve_context(
+        "rerank query",
+        user_id="u_rerank",
+        settings={
+            "memory": {
+                "retrieval_max_candidates": 2,
+                "context_max_bytes": 4096,
+                "reranker_enabled": True,
+            }
+        },
+        limit=2,
+    )
+
+    assert calls == [("rerank query", ["first-by-score", "second-by-score"], 2)]
+    assert [row["memory_id"] for row in ctx.recall_items] == [
+        "second-by-score",
+        "first-by-score",
+    ]
+    assert repo.result_set_memory_ids == [
+        "second-by-score",
+        "first-by-score",
+    ]
+
+
+class FakeRetrievalRepository:
+    def __init__(self, keyword_rows=None, relation_rows=None, recent_rows=None):
+        self.keyword_rows = keyword_rows or []
+        self.relation_rows = relation_rows or []
+        self.recent_rows = recent_rows or []
+        self.result_set_memory_ids = []
+
+    async def read_core_memory(self, user_id):
+        return ""
+
+    def get_working_memory_sync(self, user_id, limit=3):
+        return []
+
+    def get_active_conversation_id_sync(self, user_id):
+        return ""
+
+    async def search_cards(self, **kwargs):
+        return self.keyword_rows
+
+    async def get_recent_cards(self, **kwargs):
+        return self.recent_rows
+
+    async def related_cards_for_query(self, **kwargs):
+        return self.relation_rows
+
+    async def get_raw(self, raw_memory_id, user_id=""):
+        return None
+
+    async def create_result_set(self, user_id, query_text, items, metadata=None):
+        self.result_set_memory_ids = [item["memory_id"] for item in items]
+        return "rs-rank"
+
+
+def _card(memory_id: str, text: str, score: float) -> dict:
+    return {
+        "memory_id": memory_id,
+        "raw_memory_id": memory_id,
+        "summary": text,
+        "card_text": text,
+        "content": text,
+        "user_id": "u_rank",
+        "source_agent": "codex",
+        "source_task_id": "rank-test",
+        "tags": [],
+        "access_level": "shared",
+        "memory_type": "semantic",
+        "created_at": "2026-05-29 10:00:00",
+        "score_metadata": {},
+        "_score": score,
+        "_route": "memory_cards",
+    }

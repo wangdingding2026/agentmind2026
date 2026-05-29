@@ -15,15 +15,14 @@ class SessionService:
 
     _working_memory_max = 20
 
-    def __init__(self, store=None):
-        if store is None:
-            from agentmind.memory.sqlite_store import SqliteMemoryStore
-            store = SqliteMemoryStore()
-        self._store = store
-        self._ensure_schema()
+    def __init__(self, repository=None):
+        if repository is None:
+            from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+            repository = SqliteMemoryRepository()
+        self._repository = repository
 
     def _get_conn(self) -> sqlite3.Connection:
-        return self._store._get_conn()
+        return self._repository.connect_sync()
 
     def _ensure_schema(self):
         conn = self._get_conn()

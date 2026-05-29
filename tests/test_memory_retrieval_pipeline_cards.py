@@ -22,7 +22,6 @@ async def test_v4_retrieval_pipeline_uses_memory_cards_for_recall():
         user_id="u_pipeline_cards",
         settings={
             "memory": {
-                "v4_retrieval_enabled": True,
                 "retrieval_max_candidates": 10,
                 "context_max_bytes": 4096,
             }
@@ -38,11 +37,11 @@ async def test_v4_retrieval_pipeline_uses_memory_cards_for_recall():
 
 @pytest.mark.asyncio
 async def test_v4_retrieval_keeps_current_session_context_out_of_historical_recall():
+    from agentmind.memory.dto import MemoryWriteCommand
     from agentmind.memory.service import MemoryService
-    from agentmind.memory.types import MemoryEntry
 
     svc = MemoryService()
-    conn = svc.store._get_conn()
+    conn = svc.store.connect_sync()
     try:
         conn.execute(
             """INSERT INTO conversations
@@ -63,7 +62,7 @@ async def test_v4_retrieval_keeps_current_session_context_out_of_historical_reca
     svc.add_to_working_memory("u_boundary", "user", "current session says deploy port 8765")
     svc.add_to_working_memory("u_boundary", "assistant", "current session answer keeps port 8765")
 
-    await svc.store.insert(MemoryEntry(
+    await svc.store.write_raw_and_card(MemoryWriteCommand(
         memory_id="current-card-boundary",
         content="current session historical recall duplicate deployment port 8765",
         summary="current session deployment card should stay out of historical recall",
@@ -72,7 +71,7 @@ async def test_v4_retrieval_keeps_current_session_context_out_of_historical_reca
         tags=["deployment"],
         access_level="shared",
     ))
-    await svc.store.insert(MemoryEntry(
+    await svc.store.write_raw_and_card(MemoryWriteCommand(
         memory_id="history-card-boundary",
         content="historical deployment notes mention nginx timeout",
         summary="historical card should be recalled",
@@ -87,7 +86,6 @@ async def test_v4_retrieval_keeps_current_session_context_out_of_historical_reca
         user_id="u_boundary",
         settings={
             "memory": {
-                "v4_retrieval_enabled": True,
                 "working_memory_rounds": 3,
                 "retrieval_max_candidates": 10,
                 "context_max_bytes": 4096,

@@ -5,11 +5,11 @@ from agentmind.memory.types import MemoryEntry
 
 @pytest.mark.asyncio
 async def test_result_set_service_creates_set_and_expands_raw_memory():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
     from agentmind.services.result_set_service import ResultSetService
 
-    store = SqliteMemoryStore()
-    await store.batch_insert([
+    repo = SqliteMemoryRepository()
+    await _write_entries(repo, [
         MemoryEntry(
             memory_id="rs-card-1",
             content="raw source one",
@@ -26,7 +26,7 @@ async def test_result_set_service_creates_set_and_expands_raw_memory():
         ),
     ])
 
-    svc = ResultSetService(store)
+    svc = ResultSetService(repository=repo)
     result_set_id = await svc.create_result_set(
         user_id="u_rs",
         query_text="result set query",
@@ -47,16 +47,16 @@ async def test_result_set_service_creates_set_and_expands_raw_memory():
 
 @pytest.mark.asyncio
 async def test_result_set_service_next_page_advances_cursor():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
     from agentmind.services.result_set_service import ResultSetService
 
-    store = SqliteMemoryStore()
-    await store.batch_insert([
+    repo = SqliteMemoryRepository()
+    await _write_entries(repo, [
         MemoryEntry(memory_id=f"rs-page-{i}", content=f"raw {i}", summary=f"card {i}", user_id="u_rs")
         for i in range(1, 6)
     ])
 
-    svc = ResultSetService(store)
+    svc = ResultSetService(repository=repo)
     result_set_id = await svc.create_result_set(
         user_id="u_rs",
         query_text="paged result set",
@@ -141,3 +141,23 @@ async def test_memory_service_expands_and_pages_latest_result_set():
     assert expanded["card"]["memory_id"] == rows[1]["memory_id"]
     assert [item["_result_index"] for item in more["items"]] == [1, 2]
     assert more["has_more"] is True
+
+
+async def _write_entries(repo, entries: list[MemoryEntry]) -> None:
+    from agentmind.memory.dto import MemoryWriteCommand
+
+    for entry in entries:
+        await repo.write_raw_and_card(MemoryWriteCommand(
+            memory_id=entry.memory_id,
+            content=entry.content,
+            summary=entry.summary,
+            user_id=entry.user_id,
+            source_agent=entry.source_agent,
+            source_task_id=entry.source_task_id,
+            conversation_id=entry.conversation_id,
+            tags=entry.tags,
+            memory_type=entry.memory_type.value,
+            importance=entry.importance,
+            access_level=entry.access_level,
+            created_at=entry.created_at,
+        ))

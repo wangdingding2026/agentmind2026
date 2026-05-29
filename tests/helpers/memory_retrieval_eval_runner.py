@@ -3,16 +3,12 @@ from pathlib import Path
 
 import yaml
 
-from agentmind.memory.types import MemoryEntry
-
-
 def run_memory_retrieval_eval(fixture_path: Path) -> dict:
     return asyncio.run(_run_memory_retrieval_eval(fixture_path))
 
 
 async def _run_memory_retrieval_eval(fixture_path: Path) -> dict:
     from agentmind.memory.service import MemoryService
-    from agentmind.memory.types import MemoryEntry
     from agentmind.routing.middleware.memory_retriever import MemoryRetriever
     from agentmind.services.result_set_service import ResultSetService
 
@@ -86,7 +82,7 @@ async def _evaluate_case(svc, retriever, result_sets, case: dict, invariants: di
         result = await svc.retrieve(
             case["query"],
             user_id=user_id,
-            settings={"memory": {"v4_retrieval_enabled": True, "working_memory_rounds": 3}},
+            settings={"memory": {"working_memory_rounds": 3}},
         )
         return "8765" in result["assembled_context"]
 
@@ -181,6 +177,8 @@ def _row_text(row: dict) -> str:
 
 
 async def _create_eval_result_set(svc, result_sets, user_id: str, case: dict, count: int = 3) -> str:
+    from agentmind.memory.dto import MemoryWriteCommand
+
     memory_ids = []
     for index in range(1, count + 1):
         content = (
@@ -189,7 +187,7 @@ async def _create_eval_result_set(svc, result_sets, user_id: str, case: dict, co
             else f"{case['id']} result item {index}"
         )
         memory_id = f"eval-result-{case['id']}-{index}"
-        await svc.store.insert(MemoryEntry(
+        await svc.store.write_raw_and_card(MemoryWriteCommand(
             memory_id=memory_id,
             content=content,
             summary=f"result item {index}",

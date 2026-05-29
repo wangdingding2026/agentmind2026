@@ -2,7 +2,7 @@ import asyncio
 import sqlite3
 
 
-def test_initialize_memory_storage_creates_canonical_and_migration_tables(tmp_path):
+def test_initialize_memory_storage_creates_only_canonical_tables(tmp_path):
     from agentmind.memory.schema import initialize_memory_storage
 
     db_path = tmp_path / "memory.db"
@@ -28,7 +28,8 @@ def test_initialize_memory_storage_creates_canonical_and_migration_tables(tmp_pa
         "result_sets",
         "conversations",
     }.issubset(tables)
-    assert "memory_entries" in tables
+    assert "memory_entries" not in tables
+    assert "memory_fts" not in tables
 
 
 def test_repository_write_raw_and_card_same_transaction(tmp_path):

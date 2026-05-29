@@ -3,20 +3,8 @@ from pathlib import Path
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src" / "agentmind"
 
-ALLOWED_LEGACY_MEMORY_FILES = {
-    "storage/memory.py",
-    "storage/db.py",
-    "memory/sqlite_store.py",
-    "memory/maintenance.py",
-    "memory/pipeline/write_pipeline.py",
-    "memory/components/importance_scorer.py",
-    "services/trace_service.py",
-}
-
-ALLOWED_LEGACY_MEMORY_DIRS = {
-    "memory/migrations",
-    "memory/workers",
-}
+ALLOWED_LEGACY_MEMORY_FILES = set()
+ALLOWED_LEGACY_MEMORY_DIRS = set()
 
 
 def _source_files() -> list[Path]:

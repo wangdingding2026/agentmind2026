@@ -42,7 +42,7 @@ def test_session_service_reads_active_conversation_id():
     from agentmind.services.session_service import SessionService
 
     svc = SessionService()
-    conn = svc._store._get_conn()
+    conn = svc._get_conn()
     try:
         conn.execute(
             """INSERT INTO conversations
@@ -79,7 +79,7 @@ async def test_memory_service_uses_repository_force_new_flag(monkeypatch):
             return "sess-existing", False
 
     class FakeWritePipeline:
-        def __init__(self, store, repository=None):
+        def __init__(self, store=None, repository=None):
             pass
 
         async def execute(self, mem, force_new_conversation=False):

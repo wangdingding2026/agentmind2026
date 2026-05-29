@@ -49,8 +49,6 @@ memory:
   atomic_facts: true
   conflict_check_enabled: true
   conflict_similarity_threshold: 0.85
-  v4_write_enabled: false
-  v4_retrieval_enabled: false
 
 routing:
   use_new_pipeline: true

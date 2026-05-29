@@ -1,4 +1,4 @@
-"""FTS5 jieba 分词器 — 检查可用性 + 建表"""
+"""FTS5 jieba tokenizer availability helper."""
 
 import logging
 import sqlite3
@@ -28,7 +28,7 @@ def is_jieba_fts_available() -> bool:
     return _JIEBA_AVAILABLE
 
 
-def create_fts5_table(conn, table_name: str = "memory_fts", prefer_jieba: bool = True) -> bool:
+def create_fts5_table(conn, table_name: str = "memory_cards_fts", prefer_jieba: bool = True) -> bool:
     """创建 FTS5 表。返回 True 表示用了 jieba，False 表示降级默认。"""
     if prefer_jieba and is_jieba_fts_available():
         try:

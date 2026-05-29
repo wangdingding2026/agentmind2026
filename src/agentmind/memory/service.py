@@ -13,13 +13,9 @@ class MemoryService:
     """Canonical memory service for write, retrieval, stats, cleanup, and sessions."""
 
     def __init__(self, store=None, repository=None):
-        if store is None:
-            from agentmind.memory.sqlite_store import SqliteMemoryStore
-            store = SqliteMemoryStore(getattr(repository, "_db_path", ""))
         if repository is None:
             from agentmind.memory.repository_sqlite import SqliteMemoryRepository
             repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
-        self._store = store
         self._repository = repository
 
     # ── 写入 ──
@@ -27,7 +23,7 @@ class MemoryService:
     async def write_memory(
         self, entry: dict, generate_embedding: bool = True, user_id: str = ""
     ) -> int:
-        """写入记忆。兼容旧 write_memory() 签名。返回写入条数（chunking 可能产生多条）。"""
+        """写入记忆，返回写入条数（chunking 可能产生多条）。"""
         from agentmind.memory.pipeline.write_pipeline import WritePipeline
 
         mem = MemoryEntry.from_dict(entry)
@@ -43,7 +39,7 @@ class MemoryService:
                 _, created = await self._repository.ensure_active_session(mem.user_id)
                 force_new = created
 
-        pipeline = WritePipeline(self._store, repository=self._repository)
+        pipeline = WritePipeline(repository=self._repository)
         ids = await pipeline.execute(mem, force_new_conversation=force_new)
         await self._detect_conflicts(ids)
         return len(ids)
@@ -112,7 +108,7 @@ class MemoryService:
         try:
             from agentmind.services.result_set_service import ResultSetService
             result_set_id = await ResultSetService(
-                self._store, repository=self._repository
+                repository=self._repository
             ).create_result_set(
                 user_id=user_id,
                 query_text=query,
@@ -191,7 +187,7 @@ class MemoryService:
         result_set_id: str = "",
     ) -> dict | None:
         from agentmind.services.result_set_service import ResultSetService
-        svc = ResultSetService(self._store, repository=self._repository)
+        svc = ResultSetService(repository=self._repository)
         target_result_set_id = result_set_id or await svc.get_latest_result_set_id(user_id)
         if not target_result_set_id:
             return None
@@ -207,7 +203,7 @@ class MemoryService:
         page_size: int = 5,
     ) -> dict | None:
         from agentmind.services.result_set_service import ResultSetService
-        svc = ResultSetService(self._store, repository=self._repository)
+        svc = ResultSetService(repository=self._repository)
         target_result_set_id = result_set_id or await svc.get_latest_result_set_id(user_id)
         if not target_result_set_id:
             return None
@@ -259,7 +255,7 @@ class MemoryService:
         """获取最近 N 轮 Working Memory（每轮 = user + assistant 一对）。"""
         return self._repository.get_working_memory_sync(user_id, limit=limit)
 
-    # ── v4 检索流水线 ──
+    # ── 检索上下文 ──
 
     async def retrieve(
         self, message: str, user_id: str = "", settings: dict | None = None
@@ -419,5 +415,4 @@ class MemoryService:
 
     @property
     def store(self):
-        # Migration-only compatibility for legacy callers; remove in Phase 9.
-        return self._store
+        return self._repository

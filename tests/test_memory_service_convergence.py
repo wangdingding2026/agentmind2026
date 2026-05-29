@@ -2,42 +2,6 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_legacy_stats_delegates_to_memory_service_when_v4_enabled(monkeypatch):
-    from agentmind.storage import memory as legacy_memory
-
-    calls = []
-
-    class FakeMemoryService:
-        async def get_memory_stats(self):
-            calls.append("stats")
-            return {"total": 7}
-
-    monkeypatch.setattr(legacy_memory, "_use_v4_memory_store", lambda: True)
-    monkeypatch.setattr("agentmind.memory.service.MemoryService", FakeMemoryService)
-
-    assert await legacy_memory.get_memory_stats() == {"total": 7}
-    assert calls == ["stats"]
-
-
-@pytest.mark.asyncio
-async def test_legacy_cleanup_delegates_to_memory_service_when_v4_enabled(monkeypatch):
-    from agentmind.storage import memory as legacy_memory
-
-    calls = []
-
-    class FakeMemoryService:
-        async def cleanup_memory(self, retention_days=30):
-            calls.append(retention_days)
-            return 3
-
-    monkeypatch.setattr(legacy_memory, "_use_v4_memory_store", lambda: True)
-    monkeypatch.setattr("agentmind.memory.service.MemoryService", FakeMemoryService)
-
-    assert await legacy_memory.cleanup_memory(retention_days=14) == 3
-    assert calls == [14]
-
-
-@pytest.mark.asyncio
 async def test_memory_writer_uses_memory_service_for_task_memory(monkeypatch):
     from agentmind.routing.side_effects.memory_writer import MemoryWriter
 

@@ -42,46 +42,23 @@ async def test_trace_service_records_decision_outside_memory_db():
 
     conn = sqlite3.connect(str(DATA_DIR / "memory.db"))
     try:
-        row = conn.execute(
-            "SELECT memory_id FROM memory_entries WHERE memory_id=?",
-            ("trace-t1",),
-        ).fetchone()
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual')"
+            ).fetchall()
+        }
     finally:
         conn.close()
-    assert row is None
+    assert "routing_traces" not in tables
+    assert "memory_entries" not in tables
 
 
 @pytest.mark.asyncio
-async def test_trace_service_reads_legacy_memory_trace():
+async def test_trace_service_does_not_fallback_to_memory_tables():
     from agentmind.services.trace_service import TraceService
-    from agentmind.storage.db import DATA_DIR
 
-    conn = sqlite3.connect(str(DATA_DIR / "memory.db"))
-    try:
-        conn.execute(
-            """INSERT INTO memory_entries
-               (memory_id, content, summary, source_agent, source_task_id, created_at, access_level, tags, user_id)
-               VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)""",
-            (
-                "trace-old",
-                '{"agent_id": "legacy"}',
-                "[legacy] -> old (conf=0.4)",
-                "agentmind",
-                "old",
-                "private",
-                '["routing_trace"]',
-                "u1",
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    trace = await TraceService().get_trace("old")
-
-    assert trace is not None
-    assert trace["summary"] == "[legacy] -> old (conf=0.4)"
-    assert trace["memory_id"] == "trace-old"
+    assert await TraceService().get_trace("old") is None
 
 
 @pytest.mark.asyncio

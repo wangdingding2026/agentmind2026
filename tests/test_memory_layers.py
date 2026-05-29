@@ -25,10 +25,11 @@ def test_memory_layer_tables_exist_after_initialize():
 
 
 @pytest.mark.asyncio
-async def test_sqlite_store_dual_writes_raw_memory_and_memory_card():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
+async def test_repository_writes_raw_memory_and_memory_card():
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
 
-    store = SqliteMemoryStore()
+    repo = SqliteMemoryRepository()
     entry = MemoryEntry(
         memory_id="m-layer-1",
         content="raw original content",
@@ -39,11 +40,18 @@ async def test_sqlite_store_dual_writes_raw_memory_and_memory_card():
         tags=["layer", "test"],
     )
 
-    await store.insert(entry)
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id=entry.memory_id,
+        content=entry.content,
+        summary=entry.summary,
+        source_agent=entry.source_agent,
+        source_task_id=entry.source_task_id,
+        user_id=entry.user_id,
+        tags=entry.tags,
+    ))
 
-    raw = await store.get_raw_memory("m-layer-1")
-    card = await store.get_memory_card("m-layer-1")
-    legacy = await store.get("m-layer-1")
+    raw = await repo.get_raw("m-layer-1")
+    card = await repo.get_card("m-layer-1")
 
     assert raw["memory_id"] == "m-layer-1"
     assert raw["content"] == "raw original content"
@@ -51,29 +59,25 @@ async def test_sqlite_store_dual_writes_raw_memory_and_memory_card():
     assert card["memory_id"] == "m-layer-1"
     assert card["summary"] == "card summary"
     assert card["tags"] == ["layer", "test"]
-    assert legacy is not None
-    assert legacy.memory_id == "m-layer-1"
 
 
 @pytest.mark.asyncio
-async def test_memory_service_write_populates_layers_without_changing_search():
+async def test_memory_service_write_populates_layers_for_card_search():
     from agentmind.memory.service import MemoryService
 
     svc = MemoryService()
     await svc.write_memory({
         "memory_id": "svc-layer-1",
-        "content": "memory layers keep compatibility search",
-        "summary": "compatibility search",
+        "content": "memory layers keep unified card search",
+        "summary": "unified card search",
         "source_agent": "agent-a",
         "source_task_id": "task-1",
         "user_id": "u1",
-        "tags": ["compat"],
+        "tags": ["unified"],
     })
 
-    rows = await svc.search_memory(query="compatibility", user_id="u1", limit=5)
-    card = await svc.store.get_memory_card("svc-layer-1")
-    legacy = await svc.store.get("svc-layer-1")
+    rows = await svc.search_memory(query="unified", user_id="u1", limit=5)
+    card = await svc.store.get_card("svc-layer-1")
 
     assert any(r["memory_id"] == "svc-layer-1" for r in rows)
-    assert card["summary"] == "compatibility search"
-    assert legacy is None
+    assert card["summary"] == "unified card search"

@@ -172,7 +172,7 @@ class SelfReplyExecutor(ExecutorBase):
                 else:
                     memories = []
                 # conversation_id 过滤无结果时，回退到 Working Memory
-                # （v4_write_enabled=false 时不会创建 conversation 记录，但 Working Memory 始终维护）
+                # Conversation records are maintained by the canonical memory repository.
                 if not memories:
                     wm_reply = self._build_working_memory_reply(user_id)
                     if wm_reply:

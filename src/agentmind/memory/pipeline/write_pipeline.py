@@ -1,4 +1,4 @@
-"""v4 写入流水线 — 10 步编排"""
+"""Canonical memory write pipeline."""
 
 import asyncio
 import logging
@@ -17,8 +17,7 @@ logger = logging.getLogger("agentmind")
 class WritePipeline:
     """10 步写入流水线。同步步骤(1-6,10) + 异步步骤(7-9, fire-and-forget)。"""
 
-    def __init__(self, store, repository=None):
-        self._store = store
+    def __init__(self, store=None, repository=None):
         if repository is None:
             from agentmind.memory.repository_sqlite import SqliteMemoryRepository
             repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
@@ -111,10 +110,16 @@ class WritePipeline:
             user_id=entry.user_id,
             source_agent=entry.source_agent,
             source_task_id=entry.source_task_id,
+            session_id=entry.conversation_id,
             conversation_id=entry.conversation_id,
             tags=entry.tags,
             memory_type=entry.memory_type.value,
+            importance=entry.importance,
             access_level=entry.access_level,
+            content_hash=entry.content_hash,
+            parent_id=entry.parent_id,
+            embedding_model=entry.embedding_model,
+            embedding_version=entry.embedding_version,
             created_at=entry.created_at,
         )
         return await self._repository.write_raw_and_card(command)

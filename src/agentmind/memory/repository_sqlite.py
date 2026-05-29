@@ -48,15 +48,29 @@ class SqliteMemoryRepository:
         memory_id = command.memory_id or f"mem-{uuid.uuid4().hex[:16]}"
         raw_memory_id = memory_id
         now = command.created_at or _now_sqlite()
+        session_id = command.session_id or command.conversation_id
         tags_json = json.dumps(command.tags, ensure_ascii=False)
-        metadata = json.dumps({"source_kind": command.source_kind}, ensure_ascii=False)
+        metadata = json.dumps({
+            "source_kind": command.source_kind,
+            "parent_id": command.parent_id,
+        }, ensure_ascii=False)
         card_text = f"{command.summary}\n\n{command.content}" if command.summary else command.content
-        source_refs = json.dumps({
+        source_refs_data = {
             "raw_memory_id": raw_memory_id,
             "source_agent": command.source_agent,
             "source_task_id": command.source_task_id,
+        }
+        if command.parent_id:
+            source_refs_data["parent_id"] = command.parent_id
+        source_refs = json.dumps(source_refs_data, ensure_ascii=False)
+        score_metadata = json.dumps({
+            "importance": command.importance,
+            "memory_type": command.memory_type,
+            "content_hash": command.content_hash,
+            "access_level": command.access_level,
+            "embedding_model": command.embedding_model,
+            "embedding_version": command.embedding_version,
         }, ensure_ascii=False)
-        score_metadata = json.dumps({"memory_type": command.memory_type}, ensure_ascii=False)
 
         conn = self._get_conn()
         try:
@@ -93,13 +107,13 @@ class SqliteMemoryRepository:
                     command.source_task_id,
                     command.memory_type,
                     command.conversation_id,
-                    0.5,
+                    command.importance,
                     tags_json,
                     command.access_level,
                     card_text,
                     source_refs,
                     score_metadata,
-                    command.session_id,
+                    session_id,
                     now,
                     now,
                 ),
@@ -276,10 +290,6 @@ class SqliteMemoryRepository:
                 "SELECT created_at FROM memory_cards ORDER BY created_at DESC LIMIT 1"
             ).fetchone()
             with_embedding = 0
-            try:
-                with_embedding = conn.execute("SELECT COUNT(*) as cnt FROM vec_memory").fetchone()["cnt"]
-            except Exception:
-                pass
             return {
                 "total": total,
                 "by_source_agent": by_source,
@@ -339,10 +349,6 @@ class SqliteMemoryRepository:
                WHERE slot_value LIKE ?""",
             (_now_sqlite(), f"%{memory_id}%"),
         )
-        try:
-            conn.execute("DELETE FROM vec_memory WHERE memory_id=?", (memory_id,))
-        except Exception:
-            pass
 
     async def get_raw(self, raw_memory_id: str, user_id: str = "") -> dict | None:
         return await asyncio.to_thread(self._get_raw_sync, raw_memory_id, user_id)
@@ -1115,19 +1121,7 @@ class SqliteMemoryRepository:
         await asyncio.to_thread(self._write_vector_embedding_sync, memory_ids, embedding_blob)
 
     def _write_vector_embedding_sync(self, memory_ids: list[str], embedding_blob: bytes) -> None:
-        conn = self._get_conn()
-        try:
-            for memory_id in memory_ids:
-                try:
-                    conn.execute(
-                        "INSERT OR REPLACE INTO vec_memory(memory_id, embedding) VALUES (?, ?)",
-                        (memory_id, embedding_blob),
-                    )
-                except Exception:
-                    pass
-            conn.commit()
-        finally:
-            conn.close()
+        return None
 
     async def write_relations(
         self, user_id: str, relations: list[tuple[str, str, str, str, float]]

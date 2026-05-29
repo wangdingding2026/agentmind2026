@@ -82,17 +82,8 @@ def test_conflict_detector_storage_actions_go_through_repository_boundary():
     assert offenders == []
 
 
-def test_legacy_recall_pipeline_has_no_store_runtime_fallback():
-    text = _read("memory/pipeline/recall.py")
-
-    forbidden = (
-        "return await self._store.search(",
-        "self._store._get_conn(",
-    )
-
-    offenders = [pattern for pattern in forbidden if pattern in text]
-
-    assert offenders == []
+def test_old_recall_pipeline_wrapper_is_removed():
+    assert not (SRC_ROOT / "memory/pipeline/recall.py").exists()
 
 
 def test_archive_and_vector_workers_use_repository_boundary_not_legacy_tables():

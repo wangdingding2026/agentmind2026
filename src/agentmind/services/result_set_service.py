@@ -5,15 +5,10 @@ class ResultSetService:
     """Persist ordered card search results and expand them through raw memory."""
 
     def __init__(self, store=None, repository=None):
-        if store is None:
-            from agentmind.memory.sqlite_store import SqliteMemoryStore
-
-            store = SqliteMemoryStore()
         if repository is None:
             from agentmind.memory.repository_sqlite import SqliteMemoryRepository
 
             repository = SqliteMemoryRepository(getattr(store, "_db_path", ""))
-        self._store = store
         self._repository = repository
 
     async def create_result_set(

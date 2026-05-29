@@ -32,7 +32,7 @@ def test_memory_audit_report_defaults_are_stable():
 
     report = MemoryAuditReport()
 
-    assert report.memory_entries_count == 0
+    assert report.source_entry_count == 0
     assert report.raw_count == 0
     assert report.card_count == 0
     assert report.missing_raw_for_entries == 0

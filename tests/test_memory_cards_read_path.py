@@ -3,15 +3,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agentmind.memory.types import MemoryEntry, MemoryType, SearchQuery
+from agentmind.memory.types import MemoryEntry, MemoryType
 
 
 @pytest.mark.asyncio
-async def test_sqlite_store_search_memory_cards_reads_card_text_not_legacy_content():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
+async def test_memory_service_search_memory_cards_reads_card_text_not_raw_chatter():
+    from agentmind.memory.service import MemoryService
 
-    store = SqliteMemoryStore()
-    await store.insert(MemoryEntry(
+    svc = MemoryService()
+    await svc.write_memory(MemoryEntry(
         memory_id="card-read-1",
         content="large raw transcript contains implementation chatter only",
         summary="Memory cards are the retrieval surface",
@@ -24,13 +24,13 @@ async def test_sqlite_store_search_memory_cards_reads_card_text_not_legacy_conte
         tags=["architecture", "memory"],
         access_level="shared",
         created_at="2026-05-25 10:00:00",
-    ))
+    ).to_dict())
 
-    rows = await store.search_memory_cards(SearchQuery(
-        query_text="retrieval surface",
+    rows = await svc.search_memory_cards(
+        query="retrieval surface",
         user_id="u_cards",
         limit=5,
-    ))
+    )
 
     assert [r["memory_id"] for r in rows] == ["card-read-1"]
     assert rows[0]["raw_memory_id"] == "card-read-1"
@@ -41,10 +41,12 @@ async def test_sqlite_store_search_memory_cards_reads_card_text_not_legacy_conte
 
 
 @pytest.mark.asyncio
-async def test_sqlite_store_search_memory_cards_filters_and_orders_results():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
+async def test_memory_service_search_memory_cards_filters_and_orders_results():
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
 
-    store = SqliteMemoryStore()
+    repo = SqliteMemoryRepository()
+    svc = MemoryService(repository=repo)
     entries = [
         MemoryEntry(
             memory_id="card-rank-old-important",
@@ -95,17 +97,18 @@ async def test_sqlite_store_search_memory_cards_filters_and_orders_results():
             created_at="2026-05-26 10:00:00",
         ),
     ]
-    await store.batch_insert(entries)
+    for entry in entries:
+        await repo.write_raw_and_card(_entry_to_command(entry))
 
-    rows = await store.search_memory_cards(SearchQuery(
-        query_text="database boundary",
+    rows = await svc.search_memory_cards(
+        query="database boundary",
         user_id="u_filter",
         memory_types=[MemoryType.SEMANTIC],
         access_levels=["shared"],
         tags=["trace"],
         conversation_id="sess-filter",
         limit=10,
-    ))
+    )
 
     assert [r["memory_id"] for r in rows] == [
         "card-rank-old-important",
@@ -154,40 +157,24 @@ async def test_memory_service_search_memory_defaults_to_card_shape():
 
 
 @pytest.mark.asyncio
-async def test_memory_service_search_memory_does_not_fallback_for_unmigrated_legacy_rows():
-    import sqlite3
-
+async def test_memory_service_search_memory_has_no_legacy_table_fallback():
     from agentmind.memory.service import MemoryService
-    from agentmind.storage.db import DATA_DIR
 
-    conn = sqlite3.connect(str(DATA_DIR / "memory.db"))
+    svc = MemoryService()
+    conn = svc.store.connect_sync()
     try:
-        conn.execute(
-            """INSERT INTO memory_entries
-               (memory_id, content, summary, source_agent, source_task_id,
-                created_at, access_level, tags, user_id, memory_type, conversation_id, importance)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                "legacy-only-search-1",
-                "legacy-only content before card migration",
-                "legacy fallback summary",
-                "legacy-agent",
-                "legacy-task",
-                "2026-05-25 10:00:00",
-                "shared",
-                '["legacy"]',
-                "u_legacy",
-                "episodic",
-                "legacy-session",
-                0.5,
-            ),
-        )
-        conn.commit()
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual')"
+            ).fetchall()
+        }
     finally:
         conn.close()
 
-    rows = await MemoryService().search_memory(
-        query="legacy-only content",
+    assert "memory_entries" not in tables
+    rows = await svc.search_memory(
+        query="unmigrated content",
         user_id="u_legacy",
         limit=5,
     )
@@ -199,6 +186,27 @@ def _fixture_cases_by_category():
     fixture_path = Path(__file__).parent / "fixtures" / "memory_retrieval_cases.yaml"
     data = yaml.safe_load(fixture_path.read_text(encoding="utf-8"))
     return {case["category"]: case for case in data["cases"]}
+
+
+def _entry_to_command(entry: MemoryEntry):
+    from agentmind.memory.dto import MemoryWriteCommand
+
+    return MemoryWriteCommand(
+        memory_id=entry.memory_id,
+        content=entry.content,
+        summary=entry.summary,
+        user_id=entry.user_id,
+        source_agent=entry.source_agent,
+        source_task_id=entry.source_task_id,
+        conversation_id=entry.conversation_id,
+        tags=entry.tags,
+        memory_type=entry.memory_type.value,
+        importance=entry.importance,
+        access_level=entry.access_level,
+        content_hash=entry.content_hash,
+        parent_id=entry.parent_id,
+        created_at=entry.created_at,
+    )
 
 
 @pytest.mark.asyncio

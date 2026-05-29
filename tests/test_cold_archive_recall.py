@@ -160,20 +160,20 @@ async def test_archive_search_requires_user_scope():
 
 @pytest.mark.asyncio
 async def test_result_expansion_falls_back_to_archive_when_raw_missing():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
-    from agentmind.memory.types import MemoryEntry
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
     from agentmind.services.result_set_service import ResultSetService
     from agentmind.storage.db import DATA_DIR
 
-    store = SqliteMemoryStore()
-    await store.insert(MemoryEntry(
+    repo = SqliteMemoryRepository()
+    await repo.write_raw_and_card(MemoryWriteCommand(
         memory_id="arch-expand-1",
         content="hot raw content before archive",
         summary="archived expansion card",
         user_id="u_arch_expand",
         tags=["archive-expand"],
     ))
-    conn = store._get_conn()
+    conn = repo.connect_sync()
     try:
         conn.execute("DELETE FROM raw_memory WHERE memory_id=?", ("arch-expand-1",))
         conn.commit()
@@ -189,7 +189,7 @@ async def test_result_expansion_falls_back_to_archive_when_raw_missing():
         original_created_at="2025-04-01 08:00:00",
     )
 
-    svc = ResultSetService(store)
+    svc = ResultSetService(repository=repo)
     result_set_id = await svc.create_result_set(
         user_id="u_arch_expand",
         query_text="archived expansion",
@@ -206,20 +206,20 @@ async def test_result_expansion_falls_back_to_archive_when_raw_missing():
 
 @pytest.mark.asyncio
 async def test_memory_service_expand_result_marks_archive_raw_route():
+    from agentmind.memory.dto import MemoryWriteCommand
     from agentmind.memory.service import MemoryService
-    from agentmind.memory.types import MemoryEntry
     from agentmind.services.result_set_service import ResultSetService
     from agentmind.storage.db import DATA_DIR
 
     svc = MemoryService()
-    await svc.store.insert(MemoryEntry(
+    await svc.store.write_raw_and_card(MemoryWriteCommand(
         memory_id="arch-expand-service-1",
         content="hot raw content before service archive",
         summary="service archived expansion card",
         user_id="u_arch_expand_service",
         tags=["archive-expand"],
     ))
-    conn = svc.store._get_conn()
+    conn = svc.store.connect_sync()
     try:
         conn.execute("DELETE FROM raw_memory WHERE memory_id=?", ("arch-expand-service-1",))
         conn.commit()
@@ -234,7 +234,7 @@ async def test_memory_service_expand_result_marks_archive_raw_route():
         summary="service archived expansion card",
         original_created_at="2025-05-01 08:00:00",
     )
-    result_set_id = await ResultSetService(svc.store).create_result_set(
+    result_set_id = await ResultSetService(repository=svc.store).create_result_set(
         user_id="u_arch_expand_service",
         query_text="service archived expansion",
         memory_ids=["arch-expand-service-1"],

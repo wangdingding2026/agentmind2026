@@ -15,7 +15,12 @@ class MemoryWriteCommand:
     conversation_id: str = ""
     tags: list[str] = field(default_factory=list)
     memory_type: str = "episodic"
+    importance: float = 0.5
     access_level: str = "shared"
+    content_hash: str = ""
+    parent_id: str = ""
+    embedding_model: str = ""
+    embedding_version: int = 1
     source_kind: str = "task"
     created_at: str = ""
 
@@ -32,7 +37,7 @@ class MemoryContext:
 
 @dataclass
 class MemoryAuditReport:
-    memory_entries_count: int = 0
+    source_entry_count: int = 0
     raw_count: int = 0
     card_count: int = 0
     missing_raw_for_entries: int = 0

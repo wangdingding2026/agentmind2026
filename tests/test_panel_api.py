@@ -21,8 +21,6 @@ def make_panel_app(tmp_dir):
     monkeypatch.setattr("agentmind.storage.db.DATA_HOME", tmp_dir)
     monkeypatch.setattr("agentmind.storage.db.CONFIG_DIR", tmp_dir / "config")
     monkeypatch.setattr("agentmind.storage.db.LOGS_DIR", tmp_dir / "logs")
-    monkeypatch.setattr("agentmind.storage.memory.DATA_DIR", tmp_dir / "data")
-    monkeypatch.setattr("agentmind.storage.memory.CONFIG_DIR", tmp_dir / "config")
     monkeypatch.setattr("agentmind.panel.server.CONFIG_DIR", tmp_dir / "config")
     monkeypatch.setattr("agentmind.api.orchestration.CONFIG_DIR", tmp_dir / "config")
     monkeypatch.setattr("agentmind.storage.embedding.has_local_embedding", lambda: False)

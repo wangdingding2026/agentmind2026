@@ -24,9 +24,10 @@ def test_memory_cards_semantic_columns_exist_after_initialize():
 
 @pytest.mark.asyncio
 async def test_memory_card_semantic_fields_populated_on_insert():
-    from agentmind.memory.sqlite_store import SqliteMemoryStore
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
 
-    store = SqliteMemoryStore()
+    repo = SqliteMemoryRepository()
     entry = MemoryEntry(
         memory_id="semantic-card-1",
         content="Full raw source about retrieval cards",
@@ -42,9 +43,23 @@ async def test_memory_card_semantic_fields_populated_on_insert():
         tags=["retrieval", "card"],
     )
 
-    await store.insert(entry)
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id=entry.memory_id,
+        content=entry.content,
+        summary=entry.summary,
+        source_agent=entry.source_agent,
+        source_task_id=entry.source_task_id,
+        user_id=entry.user_id,
+        memory_type=entry.memory_type.value,
+        conversation_id=entry.conversation_id,
+        importance=entry.importance,
+        content_hash=entry.content_hash,
+        parent_id=entry.parent_id,
+        tags=entry.tags,
+        access_level=entry.access_level,
+    ))
 
-    card = await store.get_memory_card("semantic-card-1")
+    card = await repo.get_card("semantic-card-1")
 
     assert card["card_text"] == "Retrieval cards summarize raw memory\n\nFull raw source about retrieval cards"
     assert card["session_id"] == "conv-1"
@@ -59,6 +74,8 @@ async def test_memory_card_semantic_fields_populated_on_insert():
         "memory_type": "semantic",
         "content_hash": "hash-1",
         "access_level": "shared",
+        "embedding_model": "",
+        "embedding_version": 1,
     }
 
 
@@ -68,20 +85,20 @@ async def test_semantic_card_enrichment_does_not_change_search_path():
 
     svc = MemoryService()
     await svc.write_memory({
-        "memory_id": "semantic-search-compat-1",
-        "content": "search should still use compatibility memory entries",
-        "summary": "compat card search",
+        "memory_id": "semantic-search-unified-1",
+        "content": "search should still use the unified memory card path",
+        "summary": "unified card search",
         "source_agent": "agent-a",
         "source_task_id": "task-1",
         "user_id": "u1",
-        "tags": ["compat"],
+        "tags": ["unified"],
     })
 
-    rows = await svc.search_memory(query="compatibility memory entries", user_id="u1", limit=5)
-    card = await svc.store.get_memory_card("semantic-search-compat-1")
+    rows = await svc.search_memory(query="unified memory card path", user_id="u1", limit=5)
+    card = await svc.store.get_card("semantic-search-unified-1")
 
-    assert any(r["memory_id"] == "semantic-search-compat-1" for r in rows)
-    assert "compat card search" in card["card_text"]
+    assert any(r["memory_id"] == "semantic-search-unified-1" for r in rows)
+    assert "unified card search" in card["card_text"]
 
 
 @pytest.mark.asyncio

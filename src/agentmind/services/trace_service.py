@@ -11,7 +11,7 @@ def _now_sqlite() -> str:
 
 
 class TraceService:
-    """Store routing traces in trace.db and read legacy trace memory rows."""
+    """Store routing traces in trace.db."""
 
     def __init__(self, db_path: str = ""):
         if db_path:
@@ -111,10 +111,7 @@ class TraceService:
             conn.close()
 
     async def get_trace(self, trace_id: str) -> dict | None:
-        trace = await asyncio.to_thread(self._get_trace_sync, trace_id)
-        if trace is not None:
-            return trace
-        return await asyncio.to_thread(self._get_legacy_memory_trace_sync, trace_id)
+        return await asyncio.to_thread(self._get_trace_sync, trace_id)
 
     def _get_trace_sync(self, trace_id: str) -> dict | None:
         conn = self._get_conn()
@@ -140,21 +137,6 @@ class TraceService:
         row["tags"] = ["routing_trace"] + ([f"user:{row['user_id']}"] if row.get("user_id") else [])
         row["access_level"] = "private"
         return row
-
-    def _get_legacy_memory_trace_sync(self, trace_id: str) -> dict | None:
-        try:
-            from agentmind.storage.memory import _get_memory_conn
-            conn = _get_memory_conn()
-        except Exception:
-            return None
-        try:
-            row = conn.execute(
-                "SELECT * FROM memory_entries WHERE memory_id=? LIMIT 1",
-                (f"trace-{trace_id}",),
-            ).fetchone()
-            return dict(row) if row else None
-        finally:
-            conn.close()
 
     async def query_traces(self, limit: int = 20, user_id: str = "") -> list[dict]:
         return await asyncio.to_thread(self._query_traces_sync, limit, user_id)

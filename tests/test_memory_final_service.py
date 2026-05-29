@@ -97,10 +97,12 @@ async def test_write_memory_creates_raw_and_card_without_legacy_entry(tmp_path):
 
     conn = repo.connect_sync()
     try:
-        legacy_count = conn.execute(
-            "SELECT COUNT(*) FROM memory_entries WHERE memory_id=?",
-            ("task-1",),
-        ).fetchone()[0]
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
     finally:
         conn.close()
 
@@ -109,4 +111,4 @@ async def test_write_memory_creates_raw_and_card_without_legacy_entry(tmp_path):
     assert count == 1
     assert rows
     assert rows[0]["memory_id"] == "task-1"
-    assert legacy_count == 0
+    assert "memory_entries" not in tables

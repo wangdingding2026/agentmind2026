@@ -325,9 +325,6 @@ class TestContextInjection:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_test_app(tmp_dir)
-            # 确保 memory 模块也指向测试目录
-            mp.setattr("agentmind.storage.memory.DATA_DIR", tmp_dir / "data")
-            mp.setattr("agentmind.storage.memory.CONFIG_DIR", tmp_dir / "config")
             client = TestClient(app)
             try:
                 resp = client.post("/v1/route", json={
@@ -341,8 +338,8 @@ class TestContextInjection:
                 trace_id = data["trace_id"]
 
                 import asyncio
-                from agentmind.storage.memory import search_memory
-                results = asyncio.run(search_memory(user_id="test_user_ctx", limit=5))
+                from agentmind.memory.service import MemoryService
+                results = asyncio.run(MemoryService().search_memory(user_id="test_user_ctx", limit=5))
                 assert any(r["source_task_id"] == trace_id for r in results)
             finally:
                 mp.undo()
@@ -352,8 +349,6 @@ class TestContextInjection:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_test_app(tmp_dir)
-            mp.setattr("agentmind.storage.memory.DATA_DIR", tmp_dir / "data")
-            mp.setattr("agentmind.storage.memory.CONFIG_DIR", tmp_dir / "config")
             client = TestClient(app)
             try:
                 resp = client.post("/v1/route", json={
@@ -370,8 +365,6 @@ class TestContextInjection:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_test_app(tmp_dir)
-            mp.setattr("agentmind.storage.memory.DATA_DIR", tmp_dir / "data")
-            mp.setattr("agentmind.storage.memory.CONFIG_DIR", tmp_dir / "config")
             client = TestClient(app)
             try:
                 # 第一条消息
@@ -392,8 +385,8 @@ class TestContextInjection:
 
                 # 验证两条记忆都存在
                 import asyncio
-                from agentmind.storage.memory import search_memory
-                results = asyncio.run(search_memory(user_id="ou_ctx_chained", limit=10))
+                from agentmind.memory.service import MemoryService
+                results = asyncio.run(MemoryService().search_memory(user_id="ou_ctx_chained", limit=10))
                 assert len(results) >= 2
             finally:
                 mp.undo()
@@ -403,8 +396,6 @@ class TestContextInjection:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             app, mp = make_test_app(tmp_dir)
-            mp.setattr("agentmind.storage.memory.DATA_DIR", tmp_dir / "data")
-            mp.setattr("agentmind.storage.memory.CONFIG_DIR", tmp_dir / "config")
             client = TestClient(app)
             try:
                 client.post("/v1/route", json={
@@ -418,10 +409,11 @@ class TestContextInjection:
                     "stream": False,
                 })
                 import asyncio
-                from agentmind.storage.memory import search_memory
+                from agentmind.memory.service import MemoryService
                 # A 只能看到自己的
-                results_a = asyncio.run(search_memory(user_id="ou_user_a"))
-                results_b = asyncio.run(search_memory(user_id="ou_user_b"))
+                memory = MemoryService()
+                results_a = asyncio.run(memory.search_memory(user_id="ou_user_a"))
+                results_b = asyncio.run(memory.search_memory(user_id="ou_user_b"))
                 assert len(results_a) >= 1
                 assert len(results_b) >= 1
                 # A 的结果不包含 B 的内容

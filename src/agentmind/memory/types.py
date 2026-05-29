@@ -1,4 +1,4 @@
-"""记忆和检索模块 v4 数据类型定义"""
+"""记忆和检索模块数据类型定义"""
 
 from dataclasses import dataclass, field
 from enum import Enum

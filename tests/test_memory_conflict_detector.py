@@ -25,8 +25,8 @@ async def test_memory_conflict_detector_marks_conflicting_memory_cards():
         "tags": ["memory", "architecture"],
     })
 
-    old_card = await svc.store.get_memory_card("conflict-card-old")
-    new_card = await svc.store.get_memory_card("conflict-card-new")
+    old_card = await svc.store.get_card("conflict-card-old")
+    new_card = await svc.store.get_card("conflict-card-new")
 
     old_conflicts = old_card["score_metadata"].get("conflicts", [])
     new_conflicts = new_card["score_metadata"].get("conflicts", [])

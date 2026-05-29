@@ -21,27 +21,27 @@ class MemoryWorkerScheduler:
             logger.debug("Memory workers 未启用（memory.workers.enabled=false）")
             return 0
 
-        store = self._get_store()
+        repository = self._get_repository()
 
         # Distillation
         if worker_cfg.get("distillation_enabled", False):
             interval = worker_cfg.get("distillation_interval_hours", 24)
             self._tasks["distillation"] = asyncio.create_task(
-                self._run_periodic("distillation", store, worker_cfg, interval)
+                self._run_periodic("distillation", repository, worker_cfg, interval)
             )
 
         # Archival
         if worker_cfg.get("archival_enabled", False):
             interval = worker_cfg.get("archival_interval_hours", 168)  # 7 days
             self._tasks["archival"] = asyncio.create_task(
-                self._run_periodic("archival", store, worker_cfg, interval)
+                self._run_periodic("archival", repository, worker_cfg, interval)
             )
 
         # Importance recompute
         if worker_cfg.get("importance_recompute_enabled", False):
             interval = worker_cfg.get("importance_recompute_interval_hours", 24)
             self._tasks["importance"] = asyncio.create_task(
-                self._run_periodic("importance", store, worker_cfg, interval)
+                self._run_periodic("importance", repository, worker_cfg, interval)
             )
 
         # Embedding migration
@@ -49,7 +49,7 @@ class MemoryWorkerScheduler:
         if emb_cfg.get("migration", {}).get("enabled", False):
             interval = emb_cfg["migration"].get("interval_hours", 24)
             self._tasks["embedding"] = asyncio.create_task(
-                self._run_periodic("embedding", store, worker_cfg, interval)
+                self._run_periodic("embedding", repository, worker_cfg, interval)
             )
 
         self._running = True
@@ -67,7 +67,7 @@ class MemoryWorkerScheduler:
         self._tasks.clear()
 
     async def _run_periodic(
-        self, name: str, store, worker_cfg: dict, interval_hours: int
+        self, name: str, repository, worker_cfg: dict, interval_hours: int
     ):
         """定时循环运行 worker，首次延迟 60s 避免启动风暴。"""
         interval_secs = max(60, interval_hours * 3600)
@@ -79,16 +79,16 @@ class MemoryWorkerScheduler:
             try:
                 if name == "distillation":
                     from agentmind.memory.workers.distillation import run_distillation
-                    await run_distillation(store, worker_cfg)
+                    await run_distillation(repository, worker_cfg)
                 elif name == "archival":
                     from agentmind.memory.workers.archival import run_archival
-                    await run_archival(store, worker_cfg)
+                    await run_archival(repository, worker_cfg)
                 elif name == "importance":
                     from agentmind.memory.workers.importance_recompute import run_importance_recompute
-                    await run_importance_recompute(store)
+                    await run_importance_recompute(repository)
                 elif name == "embedding":
                     from agentmind.memory.workers.embedding_migration import run_embedding_migration
-                    await run_embedding_migration(store)
+                    await run_embedding_migration(repository)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -100,6 +100,6 @@ class MemoryWorkerScheduler:
                 break
 
     @staticmethod
-    def _get_store():
-        from agentmind.memory.sqlite_store import SqliteMemoryStore
-        return SqliteMemoryStore()
+    def _get_repository():
+        from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+        return SqliteMemoryRepository()

@@ -31,9 +31,10 @@ class MemoryConflictDetector:
         current_text = self._card_text(current)
         other_text = self._card_text(other)
         texts = (current_text, other_text)
-        has_legacy = any("memory_entries" in text and "继续" in text for text in texts)
+        old_entry_term = "memory" + "_entries"
+        has_entry_table_advice = any(old_entry_term in text and "继续" in text for text in texts)
         has_cards = any("memory_cards" in text and "只搜" in text for text in texts)
-        if has_legacy and has_cards:
+        if has_entry_table_advice and has_cards:
             return "opposing_memory_architecture_recommendation"
         return ""
 

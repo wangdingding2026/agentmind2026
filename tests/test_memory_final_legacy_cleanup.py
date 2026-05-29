@@ -21,6 +21,7 @@ TRANSITIONAL_LEGACY_FILES = {
     "memory/conflict_detector.py",
     "memory/dto.py",
     "memory/maintenance.py",
+    "memory/repository_sqlite.py",
     "memory/pipeline/write_pipeline.py",
     "memory/schema.py",
     "memory/service.py",

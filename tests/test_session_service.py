@@ -64,20 +64,17 @@ def test_session_service_reads_active_conversation_id():
 
 
 @pytest.mark.asyncio
-async def test_memory_service_uses_session_service_force_new_flag(monkeypatch):
+async def test_memory_service_uses_repository_force_new_flag(monkeypatch):
     from agentmind.memory import service as memory_service
 
     calls = []
 
-    class FakeSessionService:
-        def __init__(self, store=None):
-            pass
-
-        def consume_force_new(self, user_id):
+    class FakeRepository:
+        async def consume_force_new(self, user_id):
             calls.append(("consume", user_id))
             return True
 
-        def ensure_active_session(self, user_id):
+        async def ensure_active_session(self, user_id):
             calls.append(("ensure", user_id))
             return "sess-existing", False
 
@@ -89,38 +86,32 @@ async def test_memory_service_uses_session_service_force_new_flag(monkeypatch):
             calls.append(("force", force_new_conversation))
             return [mem.memory_id]
 
-    monkeypatch.setattr(memory_service, "SessionService", FakeSessionService)
     monkeypatch.setattr(
         "agentmind.memory.pipeline.write_pipeline.WritePipeline",
         FakeWritePipeline,
     )
 
-    svc = memory_service.MemoryService(store=object())
+    svc = memory_service.MemoryService(store=object(), repository=FakeRepository())
 
     assert await svc.write_memory({"memory_id": "m1", "content": "hello", "user_id": "u1"}) == 1
     assert ("consume", "u1") in calls
     assert ("force", True) in calls
 
 
-def test_memory_service_working_memory_delegates_to_session_service(monkeypatch):
+def test_memory_service_working_memory_delegates_to_repository():
     from agentmind.memory import service as memory_service
 
     calls = []
 
-    class FakeSessionService:
-        def __init__(self, store=None):
-            pass
-
-        def add_to_working_memory(self, user_id, role, content):
+    class FakeRepository:
+        def append_working_memory_sync(self, user_id, role, content):
             calls.append(("add", user_id, role, content))
 
-        def get_working_memory(self, user_id, limit=3):
+        def get_working_memory_sync(self, user_id, limit=3):
             calls.append(("get", user_id, limit))
             return [{"user": "hello", "assistant": "world", "ts": "now"}]
 
-    monkeypatch.setattr(memory_service, "SessionService", FakeSessionService)
-
-    svc = memory_service.MemoryService(store=object())
+    svc = memory_service.MemoryService(store=object(), repository=FakeRepository())
     svc.add_to_working_memory("u1", "user", "hello")
 
     assert svc.get_working_memory("u1", limit=1) == [

@@ -2,6 +2,12 @@ import pytest
 
 
 class FakeRepository:
+    def __init__(self, cards=None):
+        self.cards = cards or []
+
+    async def search_cards(self, **kwargs):
+        return self.cards
+
     async def create_result_set(self, user_id, query_text, items, metadata=None):
         return "rs-test"
 
@@ -28,7 +34,18 @@ async def test_search_memory_returns_card_rows_with_compatible_fields():
             raise AssertionError("legacy search must not be called")
 
     rows = await MemoryService(
-        store=FakeStore(), repository=FakeRepository()
+        store=FakeStore(),
+        repository=FakeRepository([{
+            "memory_id": "card-1",
+            "raw_memory_id": "raw-1",
+            "summary": "登录超时修复",
+            "card_text": "登录超时通过 ttl 7200 修复",
+            "source_agent": "codex",
+            "source_task_id": "trace-1",
+            "tags": ["login"],
+            "created_at": "2026-05-29 00:00:00",
+            "score_metadata": {},
+        }]),
     ).search_memory("登录超时", user_id="u1")
 
     assert rows[0]["memory_id"] == "card-1"

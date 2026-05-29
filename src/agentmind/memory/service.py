@@ -1,17 +1,16 @@
-"""MemoryService — v4 记忆引擎统一入口"""
+"""MemoryService — canonical memory engine entry point."""
 
 import logging
 
 from agentmind.memory.dto import MemoryContext
-from agentmind.memory.types import MemoryEntry, MemoryType, SearchQuery
+from agentmind.memory.types import MemoryEntry, MemoryType
 from agentmind.services.config_service import ConfigService
-from agentmind.services.session_service import SessionService
 
 logger = logging.getLogger("agentmind")
 
 
 class MemoryService:
-    """v4 记忆引擎服务单例。封装写入/检索/统计/清理/会话管理。"""
+    """Canonical memory service for write, retrieval, stats, cleanup, and sessions."""
 
     def __init__(self, store=None, repository=None):
         if store is None:
@@ -38,11 +37,10 @@ class MemoryService:
         # 检查是否需要 force_new_conversation（用户切换了 session 或刚执行 /new）
         force_new = False
         if mem.user_id:
-            session = SessionService(self._store)
-            if session.consume_force_new(mem.user_id):
+            if await self._repository.consume_force_new(mem.user_id):
                 force_new = True
             elif mem.memory_type == MemoryType.EPISODIC:
-                _, created = session.ensure_active_session(mem.user_id)
+                _, created = await self._repository.ensure_active_session(mem.user_id)
                 force_new = created
 
         pipeline = WritePipeline(self._store, repository=self._repository)
@@ -71,19 +69,22 @@ class MemoryService:
         exclude_conversation_id: str = "",
         limit: int = 10,
     ) -> list[dict]:
-        search_query = SearchQuery(
-            query_text=query,
+        card_results = await self._repository.search_cards(
+            query=query,
             user_id=user_id,
-            access_levels=access_levels or [],
             tags=tags or [],
-            exclude_conversation_id=exclude_conversation_id,
+            source_agent=source_agent,
+            access_levels=access_levels or [],
             limit=limit,
         )
-        card_results = await self._store.search_memory_cards(search_query)
+        if exclude_conversation_id:
+            card_results = [
+                row for row in card_results
+                if row.get("conversation_id") != exclude_conversation_id
+                and row.get("session_id") != exclude_conversation_id
+            ]
         dicts = []
         for row in card_results:
-            if source_agent and row.get("source_agent") != source_agent:
-                continue
             dicts.append(self._card_row_to_search_dict(row))
         if dicts:
             await self._attach_result_set_metadata(dicts, query, user_id)
@@ -138,23 +139,29 @@ class MemoryService:
         exclude_conversation_id: str = "",
         limit: int = 10,
     ) -> list[dict]:
-        search_query = SearchQuery(
-            query_text=query,
+        results = await self._repository.search_cards(
+            query=query,
             user_id=user_id,
-            memory_types=memory_types or [],
-            access_levels=access_levels or [],
             tags=tags or [],
-            conversation_id=conversation_id,
-            time_range_start=time_range_start,
-            time_range_end=time_range_end,
-            exclude_conversation_id=exclude_conversation_id,
-            limit=limit,
+            source_agent=source_agent,
+            access_levels=access_levels or [],
+            limit=limit * 3,
         )
-        results = await self._store.search_memory_cards(search_query)
-
         dicts = []
         for row in results:
-            if source_agent and row.get("source_agent") != source_agent:
+            if memory_types and row.get("memory_type") not in {mt.value for mt in memory_types}:
+                continue
+            if conversation_id and row.get("conversation_id") != conversation_id and row.get("session_id") != conversation_id:
+                continue
+            if exclude_conversation_id and (
+                row.get("conversation_id") == exclude_conversation_id
+                or row.get("session_id") == exclude_conversation_id
+            ):
+                continue
+            created_at = row.get("created_at") or ""
+            if time_range_start and created_at < time_range_start:
+                continue
+            if time_range_end and created_at > time_range_end:
                 continue
             dicts.append(row)
         return dicts[:limit]
@@ -168,15 +175,14 @@ class MemoryService:
         time_range_end: str = "",
         limit: int = 10,
     ) -> list[dict]:
-        search_query = SearchQuery(
-            query_text=query,
+        return await self._repository.search_archive(
+            query=query,
             user_id=user_id,
             memory_types=memory_types or [],
             time_range_start=time_range_start,
             time_range_end=time_range_end,
             limit=limit,
         )
-        return await self._store.search_archive_memory(search_query)
 
     async def expand_result(
         self,
@@ -229,32 +235,29 @@ class MemoryService:
 
     async def new_session(self, user_id: str) -> str:
         """用户发起 /new 时调用。关闭旧会话，开启新会话，清空 Working Memory。"""
-        new_session_id = await SessionService(self._store).new_session(user_id)
+        new_session_id = await self._repository.new_session(user_id)
         logger.info("新会话: user=%s session=%s", user_id[:12] if user_id else "-", new_session_id)
         return new_session_id
 
     def get_active_session(self, user_id: str) -> str | None:
-        return SessionService(self._store).get_active_session(user_id)
+        return self._repository.get_active_session_sync(user_id)
 
     def get_active_conversation_id(self, user_id: str) -> str | None:
-        try:
-            return self._repository.get_active_conversation_id_sync(user_id) or None
-        except Exception:
-            return SessionService(self._store).get_active_conversation_id(user_id)
+        return self._repository.get_active_conversation_id_sync(user_id) or None
 
     def _clear_working_memory(self, user_id: str):
         """清空用户的 Working Memory（内存 LRU 缓存）。"""
-        SessionService(self._store).clear_working_memory(user_id)
+        self._repository.clear_working_memory_sync(user_id)
 
     # ── Working Memory ──
 
     def add_to_working_memory(self, user_id: str, role: str, content: str):
         """记录一轮对话到 Working Memory（每轮 user + assistant）。"""
-        SessionService(self._store).add_to_working_memory(user_id, role, content)
+        self._repository.append_working_memory_sync(user_id, role, content)
 
     def get_working_memory(self, user_id: str, limit: int = 3) -> list[dict]:
         """获取最近 N 轮 Working Memory（每轮 = user + assistant 一对）。"""
-        return SessionService(self._store).get_working_memory(user_id, limit=limit)
+        return self._repository.get_working_memory_sync(user_id, limit=limit)
 
     # ── v4 检索流水线 ──
 
@@ -295,23 +298,27 @@ class MemoryService:
             if working:
                 steps.append("working_memory")
 
-        rows = await self.search_memory(
+        max_candidates = max(limit, mem_cfg.get("retrieval_max_candidates", limit))
+        exclude_conversation_id = self.get_active_conversation_id(user_id) if working else ""
+        keyword_rows = await self.search_memory(
             query=message,
             user_id=user_id,
             access_levels=["shared"],
-            exclude_conversation_id=self.get_active_conversation_id(user_id) if working else "",
-            limit=max(limit, mem_cfg.get("retrieval_max_candidates", limit)),
+            exclude_conversation_id=exclude_conversation_id,
+            limit=max_candidates,
         )
-        if not rows:
-            rows = await self.search_memory(
-                query="",
-                user_id=user_id,
-                access_levels=["shared"],
-                exclude_conversation_id=self.get_active_conversation_id(user_id) if working else "",
-                limit=max(limit, mem_cfg.get("retrieval_max_candidates", limit)),
-            )
-            if rows:
-                steps.append("recent_cards")
+        recent_rows = await self._repository.get_recent_cards(
+            user_id=user_id,
+            access_levels=["shared"],
+            exclude_conversation_id=exclude_conversation_id,
+            limit=max_candidates,
+        )
+        recent_rows = [self._card_row_to_search_dict(row) for row in recent_rows]
+        if keyword_rows:
+            steps.append("keyword_cards")
+        if recent_rows:
+            steps.append("recent_cards")
+        rows = self._merge_retrieval_rows(keyword_rows, recent_rows)
         rows = self._dedupe_memory_rows(rows)
         if rows:
             steps.append("memory_cards")
@@ -368,6 +375,18 @@ class MemoryService:
             seen.add(memory_id)
             deduped.append(row)
         return deduped
+
+    @staticmethod
+    def _merge_retrieval_rows(keyword_rows: list[dict], recent_rows: list[dict]) -> list[dict]:
+        merged = []
+        seen = set()
+        for row in list(keyword_rows) + list(recent_rows):
+            memory_id = row.get("memory_id") or row.get("raw_memory_id")
+            if memory_id in seen:
+                continue
+            seen.add(memory_id)
+            merged.append(row)
+        return merged
 
     @staticmethod
     def _dict_to_search_result(row: dict):

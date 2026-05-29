@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 
 from agentmind.memory.dto import MemoryWriteCommand
 from agentmind.memory.provider import (
@@ -32,10 +31,7 @@ class WritePipeline:
         """
         from agentmind.memory.components.content_hasher import ContentHasher
         from agentmind.memory.components.importance_scorer import ImportanceScorer
-        from agentmind.memory.components.conversation_merger import ConversationMerger
         from agentmind.memory.components.chunker import Chunker
-        from agentmind.memory.components.relation_extractor import RelationExtractor
-        from agentmind.memory.components.core_memory_manager import CoreMemoryManager
 
         content = entry.content
         if not content or not content.strip():
@@ -58,15 +54,9 @@ class WritePipeline:
 
         # 4. conversation 归并
         if entry.memory_type == MemoryType.EPISODIC and entry.user_id:
-            merger = ConversationMerger()
-            conn = self._store._get_conn()
-            try:
-                entry.conversation_id = merger.find_or_create(
-                    conn, entry.user_id, content, force_new=force_new_conversation
-                )
-                conn.commit()
-            finally:
-                conn.close()
+            entry.conversation_id = await self._repository.find_or_create_conversation(
+                entry.user_id, content, force_new=force_new_conversation
+            )
 
         # 5. chunking
         chunker = Chunker()
@@ -156,19 +146,7 @@ class WritePipeline:
             emb = await MemoryEmbeddingProvider().generate_embedding(content)
             if emb and is_vec_available():
                 blob = embedding_to_blob(emb)
-                conn = self._store._get_conn()
-                try:
-                    for mid in created_ids:
-                        try:
-                            conn.execute(
-                                "INSERT OR REPLACE INTO vec_memory(memory_id, embedding) VALUES (?, ?)",
-                                (mid, blob),
-                            )
-                        except Exception:
-                            pass
-                    conn.commit()
-                finally:
-                    conn.close()
+                await self._repository.write_vector_embedding(created_ids, blob)
         except Exception as e:
             logger.debug("异步 embedding 失败: %s", e)
 
@@ -181,23 +159,7 @@ class WritePipeline:
                 relations = await extractor.extract(mid, content)
                 all_relations.extend(relations[:5])
             if all_relations:
-                conn = self._store._get_conn()
-                try:
-                    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                    for head, rel, target, tail_id, conf in all_relations:
-                        try:
-                            conn.execute(
-                                """INSERT OR IGNORE INTO memory_relations
-                                   (user_id, head_entity, relation, tail_entity,
-                                    head_memory_id, tail_memory_id, confidence, ts, created_at)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                                (entry.user_id, head, rel, target, head, tail_id, conf, now, now),
-                            )
-                        except Exception:
-                            pass
-                    conn.commit()
-                finally:
-                    conn.close()
+                await self._repository.write_relations(entry.user_id, all_relations)
         except Exception as e:
             logger.debug("异步关系抽取失败: %s", e)
 
@@ -205,7 +167,7 @@ class WritePipeline:
         try:
             from agentmind.memory.components.core_memory_manager import CoreMemoryManager
             if CoreMemoryManager.is_candidate(entry):
-                await CoreMemoryManager.upsert(self._store, entry)
+                await self._repository.write_core_candidate(entry)
         except Exception as e:
             logger.debug("异步 Core Memory 候选失败: %s", e)
 

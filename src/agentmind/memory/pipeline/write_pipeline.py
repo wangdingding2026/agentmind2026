@@ -46,7 +46,7 @@ class WritePipeline:
         entry.content_hash = str(hasher.simhash(content))
         if await self._dedup_check(entry):
             logger.debug("dedup 命中，跳过写入: %s", entry.memory_id)
-            return [entry.memory_id]
+            return []
 
         # 3. importance 评分
         scorer = ImportanceScorer()

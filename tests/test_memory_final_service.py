@@ -112,3 +112,33 @@ async def test_write_memory_creates_raw_and_card_without_legacy_entry(tmp_path):
     assert rows
     assert rows[0]["memory_id"] == "task-1"
     assert "memory_entries" not in tables
+
+
+@pytest.mark.asyncio
+async def test_write_memory_dedup_reports_zero_and_does_not_expose_missing_new_id(tmp_path):
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    first_count = await svc.write_memory({
+        "memory_id": "dedup-original",
+        "content": "相同事实：部署端口是 8765。",
+        "summary": "部署端口 8765",
+        "user_id": "u_dedup",
+        "memory_type": "semantic",
+    })
+    second_count = await svc.write_memory({
+        "memory_id": "dedup-new-id",
+        "content": "相同事实：部署端口是 8765。",
+        "summary": "重复部署端口 8765",
+        "user_id": "u_dedup",
+        "memory_type": "semantic",
+    })
+
+    rows = await svc.search_memory("部署端口 8765", user_id="u_dedup", limit=10)
+
+    assert first_count == 1
+    assert second_count == 0
+    assert await repo.get_card("dedup-new-id") is None
+    assert [row["memory_id"] for row in rows] == ["dedup-original"]

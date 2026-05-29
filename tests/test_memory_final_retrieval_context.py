@@ -82,3 +82,36 @@ def test_prompt_envelope_accepts_memory_context():
 
     assert "部署端口 8765" in result
     assert "当前指令：现在怎么处理？" in result
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_creates_result_set_after_merge_for_recent_only_hit(tmp_path):
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="recent-only-card",
+        content="只有最近记忆会召回的完整原文。",
+        summary="最近记忆摘要",
+        user_id="u_recent_only",
+        access_level="shared",
+    ))
+
+    ctx = await svc.retrieve_context(
+        "完全不匹配关键词",
+        user_id="u_recent_only",
+        settings={"memory": {"retrieval_max_candidates": 5, "context_max_bytes": 4096}},
+    )
+    expanded = await svc.expand_result(
+        1,
+        user_id="u_recent_only",
+        result_set_id=ctx.result_set_id,
+    )
+
+    assert ctx.result_set_id.startswith("rs-")
+    assert ctx.recall_items[0]["memory_id"] == "recent-only-card"
+    assert expanded["memory_id"] == "recent-only-card"
+    assert expanded["content"] == "只有最近记忆会召回的完整原文。"

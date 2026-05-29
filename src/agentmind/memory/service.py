@@ -64,6 +64,7 @@ class MemoryService:
         access_levels: list[str] | None = None,
         exclude_conversation_id: str = "",
         limit: int = 10,
+        attach_result_set: bool = True,
     ) -> list[dict]:
         card_results = await self._repository.search_cards(
             query=query,
@@ -82,7 +83,7 @@ class MemoryService:
         dicts = []
         for row in card_results:
             dicts.append(self._card_row_to_search_dict(row))
-        if dicts:
+        if dicts and attach_result_set:
             await self._attach_result_set_metadata(dicts, query, user_id)
         return dicts[:limit]
 
@@ -311,6 +312,7 @@ class MemoryService:
             access_levels=["shared"],
             exclude_conversation_id=exclude_conversation_id,
             limit=max_candidates,
+            attach_result_set=False,
         )
         recent_rows = await self._repository.get_recent_cards(
             user_id=user_id,
@@ -333,6 +335,8 @@ class MemoryService:
             steps.append("relation_cards")
         rows = self._merge_retrieval_rows(keyword_rows, relation_rows, recent_rows)
         rows = self._dedupe_memory_rows(rows)
+        if rows:
+            await self._attach_result_set_metadata(rows, message, user_id)
         if rows:
             steps.append("memory_cards")
 

@@ -95,6 +95,28 @@ def test_legacy_recall_pipeline_has_no_store_runtime_fallback():
     assert offenders == []
 
 
+def test_archive_and_vector_workers_use_repository_boundary_not_legacy_tables():
+    texts = {
+        "memory/workers/archival.py": _read("memory/workers/archival.py"),
+        "memory/workers/embedding_migration.py": _read("memory/workers/embedding_migration.py"),
+    }
+
+    forbidden = (
+        "store._get_conn(",
+        "memory_entries",
+        "memory_fts",
+        "UPDATE memory_entries",
+        "SELECT memory_id, content, summary FROM memory_entries",
+    )
+    offenders = {
+        path: [pattern for pattern in forbidden if pattern in text]
+        for path, text in texts.items()
+    }
+    offenders = {path: patterns for path, patterns in offenders.items() if patterns}
+
+    assert offenders == {}
+
+
 def test_memory_retriever_has_no_v4_sentinel_or_switch_path():
     text = _read("routing/middleware/memory_retriever.py")
 

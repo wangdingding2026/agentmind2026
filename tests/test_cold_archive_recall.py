@@ -1,5 +1,6 @@
 import gzip
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -249,3 +250,45 @@ async def test_memory_service_expand_result_marks_archive_raw_route():
     assert expanded["_route"] == "result_set_expand"
     assert expanded["_raw_route"] == "archive"
     assert expanded["content"] == "服务层冷库展开原文。"
+
+
+@pytest.mark.asyncio
+async def test_archival_worker_archives_raw_card_memory_through_repository(tmp_path):
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+    from agentmind.memory.workers.archival import run_archival
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    old_created_at = (
+        datetime.now(timezone.utc) - timedelta(days=120)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    await svc.write_memory({
+        "memory_id": "archive-worker-card-1",
+        "content": "归档 worker 应该压缩 raw_memory 内容。",
+        "summary": "归档 worker raw/card",
+        "user_id": "u_archive_worker",
+        "source_agent": "codex",
+        "created_at": old_created_at,
+    })
+    conn = repo.connect_sync()
+    try:
+        conn.execute(
+            "UPDATE memory_cards SET score_metadata=json_set(score_metadata, '$.distilled', 1) WHERE memory_id=?",
+            ("archive-worker-card-1",),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    count = await run_archival(repo, {"archival_retention_days": 90})
+    rows = await repo.search_archive(
+        query="归档 worker",
+        user_id="u_archive_worker",
+        limit=5,
+    )
+
+    assert count == 1
+    assert rows[0]["memory_id"] == "archive-worker-card-1"
+    assert rows[0]["content"] == "归档 worker 应该压缩 raw_memory 内容。"
+    assert await repo.get_raw("archive-worker-card-1", user_id="u_archive_worker") is None

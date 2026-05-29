@@ -505,6 +505,104 @@ class SqliteMemoryRepository:
             limit,
         )
 
+    async def archive_distilled_cards(self, retention_days: int = 90, limit: int = 1000) -> int:
+        return await asyncio.to_thread(self._archive_distilled_cards_sync, retention_days, limit)
+
+    def _archive_distilled_cards_sync(self, retention_days: int = 90, limit: int = 1000) -> int:
+        conn = self._get_conn()
+        archive_conn = self._get_archive_conn()
+        if archive_conn is None:
+            conn.close()
+            return 0
+        try:
+            rows = conn.execute(
+                """SELECT c.*, r.content AS raw_content
+                   FROM memory_cards c
+                   JOIN raw_memory r ON r.memory_id = c.raw_memory_id
+                   WHERE json_extract(c.score_metadata, '$.distilled') = 1
+                     AND c.created_at <= datetime(?, ?)
+                   ORDER BY c.created_at ASC, c.memory_id ASC
+                   LIMIT ?""",
+                (_now_sqlite(), f"-{retention_days} days", limit),
+            ).fetchall()
+            if not rows:
+                return 0
+            archived_count = 0
+            now = _now_sqlite()
+            for row in rows:
+                card = self._row_to_card(row)
+                table_name = self._archive_table_for_created_at(card.get("created_at", ""))
+                self._ensure_archive_table(archive_conn, table_name)
+                compressed = gzip.compress((row["raw_content"] or "").encode("utf-8"))
+                archive_conn.execute(
+                    f"""INSERT OR REPLACE INTO {table_name}
+                       (memory_id, user_id, memory_type, content_compressed, summary,
+                        importance, original_created_at, archived_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        card["memory_id"],
+                        card.get("user_id", ""),
+                        card.get("memory_type", "episodic"),
+                        compressed,
+                        (card.get("summary", "") or "")[:1000],
+                        card.get("importance", 0.5),
+                        card.get("created_at", ""),
+                        now,
+                    ),
+                )
+                self._delete_card_and_raw_sync(card["memory_id"], card.get("raw_memory_id", ""), conn)
+                archived_count += 1
+            archive_conn.commit()
+            conn.commit()
+            return archived_count
+        finally:
+            archive_conn.close()
+            conn.close()
+
+    @staticmethod
+    def _archive_table_for_created_at(created_at: str) -> str:
+        try:
+            dt = datetime.strptime(created_at[:10], "%Y-%m-%d")
+            return f"archive_{dt.year}_{dt.month:02d}"
+        except (ValueError, TypeError):
+            return "archive_default"
+
+    @staticmethod
+    def _ensure_archive_table(conn: sqlite3.Connection, table_name: str) -> None:
+        conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                memory_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                memory_type TEXT,
+                content_compressed BLOB,
+                summary TEXT,
+                importance REAL,
+                original_created_at TEXT,
+                archived_at TEXT NOT NULL
+            )
+        """)
+
+    async def rebuild_vector_index(self, *, target_version: int, model: str = "", limit: int = 100) -> int:
+        return await asyncio.to_thread(self._rebuild_vector_index_sync, target_version, model, limit)
+
+    def _rebuild_vector_index_sync(self, target_version: int, model: str = "", limit: int = 100) -> int:
+        if target_version <= 1:
+            return 0
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                """SELECT c.memory_id, r.content, c.summary
+                   FROM memory_cards c
+                   JOIN raw_memory r ON r.memory_id = c.raw_memory_id
+                   WHERE COALESCE(json_extract(c.score_metadata, '$.embedding_version'), 1) < ?
+                   ORDER BY c.created_at ASC, c.memory_id ASC
+                   LIMIT ?""",
+                (target_version, limit),
+            ).fetchall()
+            return len(rows) if rows else 0
+        finally:
+            conn.close()
+
     def _search_archive_sync(
         self,
         query: str,

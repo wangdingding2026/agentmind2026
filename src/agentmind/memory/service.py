@@ -72,14 +72,9 @@ class MemoryService:
             tags=tags or [],
             source_agent=source_agent,
             access_levels=access_levels or [],
+            exclude_conversation_id=exclude_conversation_id,
             limit=limit,
         )
-        if exclude_conversation_id:
-            card_results = [
-                row for row in card_results
-                if row.get("conversation_id") != exclude_conversation_id
-                and row.get("session_id") != exclude_conversation_id
-            ]
         dicts = []
         for row in card_results:
             dicts.append(self._card_row_to_search_dict(row))
@@ -136,32 +131,24 @@ class MemoryService:
         exclude_conversation_id: str = "",
         limit: int = 10,
     ) -> list[dict]:
+        memory_type_values = [
+            mt.value if hasattr(mt, "value") else str(mt)
+            for mt in (memory_types or [])
+        ]
         results = await self._repository.search_cards(
             query=query,
             user_id=user_id,
             tags=tags or [],
             source_agent=source_agent,
             access_levels=access_levels or [],
-            limit=limit * 3,
+            memory_types=memory_type_values,
+            conversation_id=conversation_id,
+            exclude_conversation_id=exclude_conversation_id,
+            time_range_start=time_range_start,
+            time_range_end=time_range_end,
+            limit=limit,
         )
-        dicts = []
-        for row in results:
-            if memory_types and row.get("memory_type") not in {mt.value for mt in memory_types}:
-                continue
-            if conversation_id and row.get("conversation_id") != conversation_id and row.get("session_id") != conversation_id:
-                continue
-            if exclude_conversation_id and (
-                row.get("conversation_id") == exclude_conversation_id
-                or row.get("session_id") == exclude_conversation_id
-            ):
-                continue
-            created_at = row.get("created_at") or ""
-            if time_range_start and created_at < time_range_start:
-                continue
-            if time_range_end and created_at > time_range_end:
-                continue
-            dicts.append(row)
-        return dicts[:limit]
+        return results[:limit]
 
     async def search_archive_memory(
         self,

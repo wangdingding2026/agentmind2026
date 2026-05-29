@@ -137,6 +137,11 @@ class SqliteMemoryRepository:
         tags: list[str] | None = None,
         source_agent: str = "",
         access_levels: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        conversation_id: str = "",
+        exclude_conversation_id: str = "",
+        time_range_start: str = "",
+        time_range_end: str = "",
         limit: int = 10,
     ) -> list[dict]:
         return await asyncio.to_thread(
@@ -146,6 +151,11 @@ class SqliteMemoryRepository:
             tags or [],
             source_agent,
             access_levels or [],
+            memory_types or [],
+            conversation_id,
+            exclude_conversation_id,
+            time_range_start,
+            time_range_end,
             limit,
         )
 
@@ -171,6 +181,11 @@ class SqliteMemoryRepository:
         tags: list[str],
         source_agent: str,
         access_levels: list[str],
+        memory_types: list[str],
+        conversation_id: str,
+        exclude_conversation_id: str,
+        time_range_start: str,
+        time_range_end: str,
         limit: int,
     ) -> list[dict]:
         clauses = []
@@ -193,6 +208,22 @@ class SqliteMemoryRepository:
             placeholders = ",".join("?" for _ in access_levels)
             clauses.append(f"access_level IN ({placeholders})")
             params.extend(access_levels)
+        if memory_types:
+            placeholders = ",".join("?" for _ in memory_types)
+            clauses.append(f"memory_type IN ({placeholders})")
+            params.extend(memory_types)
+        if conversation_id:
+            clauses.append("(conversation_id = ? OR session_id = ?)")
+            params.extend([conversation_id, conversation_id])
+        if exclude_conversation_id:
+            clauses.append("(conversation_id != ? AND session_id != ?)")
+            params.extend([exclude_conversation_id, exclude_conversation_id])
+        if time_range_start:
+            clauses.append("created_at >= ?")
+            params.append(time_range_start)
+        if time_range_end:
+            clauses.append("created_at <= ?")
+            params.append(time_range_end)
         for tag in tags:
             clauses.append("tags LIKE ?")
             params.append(f"%{tag}%")

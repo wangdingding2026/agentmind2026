@@ -157,6 +157,52 @@ async def test_memory_service_search_memory_defaults_to_card_shape():
 
 
 @pytest.mark.asyncio
+async def test_memory_card_filters_are_applied_before_limit_to_prevent_missed_hits():
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    repo = SqliteMemoryRepository()
+    svc = MemoryService(repository=repo)
+    for index in range(6):
+        await repo.write_raw_and_card(MemoryWriteCommand(
+            memory_id=f"filter-decoy-{index}",
+            content="phase12 quality filter candidate",
+            summary="phase12 quality decoy",
+            user_id="u_filter_pushdown",
+            memory_type="semantic",
+            conversation_id="conv-other",
+            created_at=f"2026-05-29 10:0{index}:00",
+            access_level="shared",
+        ))
+    for index in range(2):
+        await repo.write_raw_and_card(MemoryWriteCommand(
+            memory_id=f"filter-target-{index}",
+            content="phase12 quality filter candidate",
+            summary="phase12 quality target",
+            user_id="u_filter_pushdown",
+            memory_type="procedural",
+            conversation_id="conv-target",
+            created_at=f"2026-05-28 09:0{index}:00",
+            access_level="shared",
+        ))
+
+    rows = await svc.search_memory_cards(
+        query="phase12 quality",
+        user_id="u_filter_pushdown",
+        memory_types=[MemoryType.PROCEDURAL],
+        conversation_id="conv-target",
+        access_levels=["shared"],
+        limit=2,
+    )
+
+    assert [row["memory_id"] for row in rows] == [
+        "filter-target-0",
+        "filter-target-1",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_memory_service_search_memory_has_no_legacy_table_fallback():
     from agentmind.memory.service import MemoryService
 

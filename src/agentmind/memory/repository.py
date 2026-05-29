@@ -21,6 +21,11 @@ class IMemoryRepository(ABC):
         tags: list[str] | None = None,
         source_agent: str = "",
         access_levels: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        conversation_id: str = "",
+        exclude_conversation_id: str = "",
+        time_range_start: str = "",
+        time_range_end: str = "",
         limit: int = 10,
     ) -> list[dict]:
         ...

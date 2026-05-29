@@ -154,7 +154,7 @@ async def test_memory_service_search_memory_defaults_to_card_shape():
 
 
 @pytest.mark.asyncio
-async def test_memory_service_search_memory_falls_back_only_for_unmigrated_legacy_rows():
+async def test_memory_service_search_memory_does_not_fallback_for_unmigrated_legacy_rows():
     import sqlite3
 
     from agentmind.memory.service import MemoryService
@@ -192,9 +192,7 @@ async def test_memory_service_search_memory_falls_back_only_for_unmigrated_legac
         limit=5,
     )
 
-    assert [r["memory_id"] for r in rows] == ["legacy-only-search-1"]
-    assert rows[0]["_route"] != "memory_cards"
-    assert rows[0]["content"] == "legacy-only content before card migration"
+    assert rows == []
 
 
 def _fixture_cases_by_category():

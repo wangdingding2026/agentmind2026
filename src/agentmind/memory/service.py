@@ -87,17 +87,6 @@ class MemoryService:
             dicts.append(self._card_row_to_search_dict(row))
         if dicts:
             await self._attach_result_set_metadata(dicts, query, user_id)
-            return dicts[:limit]
-
-        results = await self._store.search(search_query)
-
-        # 兼容旧 API 返回 dict 列表
-        for r in results:
-            d = r.to_dict()
-            if source_agent:
-                if d.get("source_agent") != source_agent:
-                    continue
-            dicts.append(d)
         return dicts[:limit]
 
     @staticmethod

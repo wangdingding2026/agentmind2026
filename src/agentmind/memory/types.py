@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
 
+from agentmind.memory.dto import MemoryAuditReport, MemoryContext, MemoryWriteCommand
+
 
 def _safe_float(v, default: float = 0.0) -> float:
     try:

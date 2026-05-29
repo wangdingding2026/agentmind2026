@@ -2,6 +2,12 @@
 
 import logging
 
+from agentmind.memory.provider import (
+    MemoryEmbeddingProvider,
+    embedding_to_blob,
+    read_memory_settings,
+)
+
 logger = logging.getLogger("agentmind")
 
 
@@ -15,9 +21,7 @@ async def run_embedding_migration(store) -> int:
     conn = store._get_conn()
     try:
         # 查找需要迁移的记忆（embedding_version < 当前目标版本）
-        from agentmind.storage.memory import _load_settings, _generate_embedding, _embedding_to_blob
-
-        settings = _load_settings()
+        settings = read_memory_settings()
         emb_cfg = settings.get("embedding", {})
         target_version = emb_cfg.get("version", 1)
 
@@ -50,9 +54,9 @@ async def run_embedding_migration(store) -> int:
             mid = r["memory_id"]
             text = ((r["content"] or "") + " " + (r["summary"] or ""))[:8000]
             try:
-                emb = await _generate_embedding(text)
+                emb = await MemoryEmbeddingProvider().generate_embedding(text)
                 if emb:
-                    blob = _embedding_to_blob(emb)
+                    blob = embedding_to_blob(emb)
                     conn.execute(
                         f"INSERT OR REPLACE INTO {new_table}(memory_id, embedding) VALUES (?, ?)",
                         (mid, blob),

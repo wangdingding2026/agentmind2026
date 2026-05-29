@@ -19,6 +19,7 @@ TRANSITIONAL_LEGACY_FILES = {
     "config/defaults.py",
     "memory/components/importance_scorer.py",
     "memory/conflict_detector.py",
+    "memory/dto.py",
     "memory/pipeline/write_pipeline.py",
     "memory/service.py",
     "memory/sqlite_store.py",

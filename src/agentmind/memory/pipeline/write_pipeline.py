@@ -4,6 +4,11 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from agentmind.memory.provider import (
+    MemoryEmbeddingProvider,
+    embedding_to_blob,
+    read_memory_settings,
+)
 from agentmind.memory.types import MemoryEntry, MemoryType
 
 logger = logging.getLogger("agentmind")
@@ -131,10 +136,9 @@ class WritePipeline:
         """异步富化：embedding 生成 + 关系抽取 + Core Memory 候选检测。"""
         # 7. embedding 生成
         try:
-            from agentmind.storage.memory import _generate_embedding, _embedding_to_blob
-            emb = await _generate_embedding(content)
+            emb = await MemoryEmbeddingProvider().generate_embedding(content)
             if emb and is_vec_available():
-                blob = _embedding_to_blob(emb)
+                blob = embedding_to_blob(emb)
                 conn = self._store._get_conn()
                 try:
                     for mid in created_ids:
@@ -191,8 +195,7 @@ class WritePipeline:
     async def _capacity_check(self):
         """容量检查：超过 max_entries 时 LRU 淘汰。"""
         try:
-            from agentmind.storage.memory import _load_settings
-            settings = _load_settings()
+            settings = read_memory_settings()
             max_entries = settings.get("memory", {}).get("max_entries", 10000)
             total = await self._store.count()
             if total >= max_entries:

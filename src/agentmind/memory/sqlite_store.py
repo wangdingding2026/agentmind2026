@@ -6,9 +6,13 @@ import json
 import logging
 import re
 import sqlite3
-import struct
 from datetime import datetime, timezone
 
+from agentmind.memory.provider import (
+    embedding_to_blob,
+    generate_embedding_sync,
+    read_memory_settings,
+)
 from agentmind.memory.repository import IMemoryStore
 from agentmind.memory.types import MemoryEntry, MemoryType, SearchQuery, SearchResult
 from agentmind.storage.db import DATA_DIR, _try_load_sqlite_vec, is_vec_available
@@ -29,11 +33,6 @@ def _has_cjk(text: str) -> bool:
 
 def _now_sqlite() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _embedding_to_blob(embedding: list[float]) -> bytes:
-    return struct.pack(f"{len(embedding)}f", *embedding)
-
 
 
 class SqliteMemoryStore(IMemoryStore):
@@ -690,7 +689,7 @@ class SqliteMemoryStore(IMemoryStore):
         if not emb:
             return []
 
-        blob = _embedding_to_blob(emb)
+        blob = embedding_to_blob(emb)
         try:
             rows = conn.execute(
                 f"""SELECT m.*, vec_distance_cosine(v.embedding, ?) AS distance
@@ -736,9 +735,8 @@ class SqliteMemoryStore(IMemoryStore):
     def _get_query_embedding(self, text: str) -> list[float] | None:
         """尝试获取 query 文本的 embedding（优先外部 API，降级本地模型）"""
         try:
-            from agentmind.storage.memory import _load_settings, await_or_sync_embedding
-            settings = _load_settings()
-            return await_or_sync_embedding(text, settings)
+            settings = read_memory_settings()
+            return generate_embedding_sync(text, settings)
         except Exception:
             return None
 

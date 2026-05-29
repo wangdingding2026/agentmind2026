@@ -2,6 +2,8 @@
 
 import re
 
+from agentmind.memory.provider import read_agent_credibility
+
 # 用户强调关键词
 _EMPHASIS_WORDS = re.compile(r'记住|重要|务必|关键|必须|一定要|千万别|千万别忘')
 
@@ -55,7 +57,6 @@ class ImportanceScorer:
         if not agent_id:
             return 0.5
         try:
-            from agentmind.storage.memory import _get_agent_credibility
-            return _get_agent_credibility(agent_id)
+            return read_agent_credibility(agent_id)
         except Exception:
             return 0.5

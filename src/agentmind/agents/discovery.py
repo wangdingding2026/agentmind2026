@@ -307,27 +307,28 @@ async def scan_installed_agents() -> list[AgentProfile]:
     scanned = set()
     for d in path_dirs:
         try:
-            for f in _os.scandir(d):
-                if f.is_file() and _os.access(f.path, _os.X_OK):
-                    name = f.name
-                    if name in all_known or name in scanned:
-                        continue
-                    if name.startswith(".") or name in ("agentmind",):
-                        continue
-                    scanned.add(name)
-                    probe_count += 1
-                    if probe_count > PROBE_MAX_COUNT or _time.time() - probe_start > PROBE_MAX_SECS:
-                        break
-                    config = await _probe_unknown_executable(name)
-                    if config:
-                        profile = AgentProfile(
-                            id=config["id"], name=config["name"], type=config["type"],
-                            detect_commands=[config["id"]], tags=config["tags"],
-                            timeout=config["timeout"], config=config["config"],
-                            auto_discovered=True,
-                        )
-                        discovered.append(profile)
-                        logger.info("自动探测发现 Agent: %s", config["name"])
+            with _os.scandir(d) as entries:
+                for f in entries:
+                    if f.is_file() and _os.access(f.path, _os.X_OK):
+                        name = f.name
+                        if name in all_known or name in scanned:
+                            continue
+                        if name.startswith(".") or name in ("agentmind",):
+                            continue
+                        scanned.add(name)
+                        probe_count += 1
+                        if probe_count > PROBE_MAX_COUNT or _time.time() - probe_start > PROBE_MAX_SECS:
+                            break
+                        config = await _probe_unknown_executable(name)
+                        if config:
+                            profile = AgentProfile(
+                                id=config["id"], name=config["name"], type=config["type"],
+                                detect_commands=[config["id"]], tags=config["tags"],
+                                timeout=config["timeout"], config=config["config"],
+                                auto_discovered=True,
+                            )
+                            discovered.append(profile)
+                            logger.info("自动探测发现 Agent: %s", config["name"])
             if probe_count > PROBE_MAX_COUNT or _time.time() - probe_start > PROBE_MAX_SECS:
                 break
         except PermissionError:

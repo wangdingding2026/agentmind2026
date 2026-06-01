@@ -116,10 +116,8 @@ class TestAuthMiddleware:
     def test_cookie_token_works(self, auth_test_client):
         """通过 cookie 携带 token 可以成功"""
         client, token = auth_test_client
-        resp = client.post(
-            "/v1/agents/scan",
-            cookies={"agentmind_token": token},
-        )
+        client.cookies.set("agentmind_token", token)
+        resp = client.post("/v1/agents/scan")
         assert resp.status_code != 401
 
     def test_route_endpoint_with_token(self, auth_test_client):
@@ -162,13 +160,15 @@ class TestAuthMiddleware:
     def test_panel_get_tasks_with_cookie_returns_200(self, auth_test_client):
         """GET /panel/api/tasks 带 cookie token 返回 200"""
         client, token = auth_test_client
-        resp = client.get("/panel/api/tasks", cookies={"agentmind_token": token})
+        client.cookies.set("agentmind_token", token)
+        resp = client.get("/panel/api/tasks")
         assert resp.status_code == 200
 
     def test_panel_get_agents_with_cookie_returns_200(self, auth_test_client):
         """GET /panel/api/agents 带 cookie token 返回 200"""
         client, token = auth_test_client
-        resp = client.get("/panel/api/agents", cookies={"agentmind_token": token})
+        client.cookies.set("agentmind_token", token)
+        resp = client.get("/panel/api/agents")
         assert resp.status_code == 200
 
     def test_panel_page_sets_cookie(self, auth_test_client):

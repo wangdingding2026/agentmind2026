@@ -138,10 +138,11 @@ def test_panel_settings_page_uses_horizontal_form_rows():
 
     assert 'class="settings-form"' in html
     assert html.count('class="settings-row"') >= 14
-    assert ".settings-row" in css
+    assert ".settings-grid .settings-row" in css
     assert "grid-template-columns: 108px minmax(0, 1fr)" in css
     assert ".settings-actions" in css
     assert ".settings-grid label { padding:" not in css
+    assert ".settings-grid label {\n  display: flex;\n  flex-direction: column;" not in css
 
 
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():

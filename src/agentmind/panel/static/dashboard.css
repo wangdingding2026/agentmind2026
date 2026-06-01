@@ -185,7 +185,7 @@ tr:hover td { background: #f9fbfd; }
   flex-wrap: wrap;
 }
 .filter-row, .inline-form, .form-grid { padding: 0.8rem 0.9rem; }
-.form-grid label, .settings-grid label {
+.form-grid label {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -208,7 +208,7 @@ input, select {
   gap: 0.7rem;
   padding: 0.85rem 0.9rem;
 }
-.settings-row {
+.settings-grid .settings-row {
   display: grid;
   grid-template-columns: 108px minmax(0, 1fr);
   align-items: center;
@@ -216,10 +216,10 @@ input, select {
   color: #475467;
   font-size: 0.82rem;
 }
-.settings-row span {
+.settings-grid .settings-row span {
   line-height: 1.25;
 }
-.settings-row input {
+.settings-grid .settings-row input {
   width: 100%;
   min-width: 0;
 }
@@ -355,6 +355,6 @@ button { font: inherit; }
   .content { padding: 1rem; }
   .metric-grid, .dashboard-grid, .split-grid, .settings-grid { grid-template-columns: 1fr; }
   .panel-span-2 { grid-column: span 1; }
-  .settings-row { grid-template-columns: 1fr; gap: 0.25rem; }
+  .settings-grid .settings-row { grid-template-columns: 1fr; gap: 0.25rem; }
   .settings-actions { padding-left: 0; }
 }

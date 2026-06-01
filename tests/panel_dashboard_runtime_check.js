@@ -162,7 +162,7 @@ const fixtures = {
   '/routing/strategies': { strategies: [{ name: 'explicit', kind: 'core', enabled: true }] },
   '/rules': { rules: [{ name: 'code', patterns: ['code'], first_agent: 'a1', second_agent: '', type: 'keyword' }] },
   '/audit/events?limit=80&module=&action=&agent_id=&trace_id=': {
-    events: [{ created_at: '2026-06-01T00:00:00Z', module: 'routing', action: 'decide', agent_id: 'a1', risk_level: 'low', trace_id: 't1' }],
+    events: [{ created_at: '2026-06-01T00:00:00Z', module: 'config', action: 'update', agent_id: 'a1', risk_level: 'low', trace_id: 't1' }],
   },
   '/memory/search?q=&user_id=&limit=30': {
     memories: [{ memory_id: 'm1', summary: 'remember this', source_agent: 'a1', created_at: '2026-06-01T00:00:00Z', tags: ['team'] }],
@@ -278,7 +278,10 @@ async function main() {
   await context.deleteRouteRule('code');
 
   await context.loadAuditWorkbench();
-  assert(document.getElementById('audit-tbody').innerHTML.includes('routing'));
+  assert(document.getElementById('audit-tbody').innerHTML.includes('配置'));
+  assert(document.getElementById('audit-tbody').innerHTML.includes('更新'));
+  assert(!document.getElementById('audit-tbody').innerHTML.includes('config'));
+  assert(!document.getElementById('audit-tbody').innerHTML.includes('update'));
   await context.loadMemoryWorkbench();
   assert(document.getElementById('memory-list').innerHTML.includes('remember this'));
   await context.deleteMemory('m1');

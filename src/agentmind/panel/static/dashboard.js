@@ -153,6 +153,34 @@ function formatRiskLevel(level) {
   return labels[level] || level || '-';
 }
 
+function formatAuditModule(module) {
+  const labels = {
+    config: '配置',
+    routing: '路由',
+    execution: '执行',
+    governance: '治理',
+    memory: '记忆',
+    agent: 'Agent',
+    task: '任务',
+  };
+  return labels[module] || module || '-';
+}
+
+function formatAuditAction(action) {
+  const labels = {
+    update: '更新',
+    create: '创建',
+    delete: '删除',
+    decision: '决策',
+    decide: '决策',
+    blocked: '拦截',
+    complete: '完成',
+    failed: '失败',
+    cpe_decision: '上下文策略决策',
+  };
+  return labels[action] || action || '-';
+}
+
 function tagsHtml(tags) {
   return (tags || []).map(tag => '<span class="tag">' + escapeHtml(tag) + '</span>').join('');
 }
@@ -250,7 +278,7 @@ function renderCommandRouting(overview) {
 function renderCommandAudit(overview) {
   const events = (overview && overview.recent_audit_events) || [];
   $('command-audit-list').innerHTML = events.length ? events.slice(0, 6).map(event => (
-    listItem(event.module || '-', (event.action || '-') + (event.trace_id ? ' · ' + event.trace_id : ''))
+    listItem(formatAuditModule(event.module), formatAuditAction(event.action) + (event.trace_id ? ' · ' + event.trace_id : ''))
   )).join('') : emptyHtml('暂无审计事件');
 }
 
@@ -338,8 +366,8 @@ function renderTaskExplanation(data) {
     '<div><strong>治理事件：</strong>' + escapeHtml((routing.governance_events || []).length) + '</div>';
   const audit = data.audit_events || [];
   $('task-detail-audit').innerHTML = audit.length ? audit.map(event => (
-    '<div class="detail-event"><strong>' + escapeHtml(event.module || '-') + '</strong> · ' +
-    escapeHtml(event.action || '-') + '<div class="item-meta">' + escapeHtml(event.created_at || '') + '</div></div>'
+    '<div class="detail-event"><strong>' + escapeHtml(formatAuditModule(event.module)) + '</strong> · ' +
+    escapeHtml(formatAuditAction(event.action)) + '<div class="item-meta">' + escapeHtml(event.created_at || '') + '</div></div>'
   )).join('') : emptyHtml('无审计事件');
 }
 
@@ -576,8 +604,8 @@ async function loadAuditWorkbench() {
   const data = await fetchAPI('/audit/events?' + params.toString());
   const events = (data && data.events) || [];
   $('audit-tbody').innerHTML = events.map(event => (
-    '<tr><td>' + escapeHtml(formatTime(event.created_at)) + '</td><td>' + escapeHtml(event.module || '-') +
-    '</td><td>' + escapeHtml(event.action || '-') + '</td><td>' + escapeHtml(event.agent_id || '-') +
+    '<tr><td>' + escapeHtml(formatTime(event.created_at)) + '</td><td>' + escapeHtml(formatAuditModule(event.module)) +
+    '</td><td>' + escapeHtml(formatAuditAction(event.action)) + '</td><td>' + escapeHtml(event.agent_id || '-') +
     '</td><td>' + escapeHtml(formatRiskLevel(event.risk_level)) + '</td><td>' + escapeHtml(event.trace_id || '-') + '</td></tr>'
   )).join('') || '<tr><td colspan="6" class="empty">暂无审计事件</td></tr>';
 }

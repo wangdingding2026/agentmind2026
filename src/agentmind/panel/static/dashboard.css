@@ -133,6 +133,20 @@ body {
   display: flex;
   flex-direction: column;
 }
+.settings-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.settings-section-title {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfd;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
 .panel-span-2 { grid-column: span 2; }
 .panel {
   background: var(--surface);

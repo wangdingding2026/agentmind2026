@@ -146,9 +146,19 @@ def test_panel_settings_page_uses_horizontal_form_rows():
 
 
 def test_panel_settings_page_lays_out_fields_across_each_panel():
+    html = _read(PANEL_HTML)
     css = _read(PANEL_CSS)
 
+    assert html.count('class="settings-section"') == 5
+    assert html.count('class="settings-section-title"') == 5
+    assert 'id="settings-feishu-section"' in html
+    assert '<section class="settings-section" id="settings-feishu-section">' in html
+    assert '<div class="settings-section-title">飞书通道</div>' in html
+    settings_html = html[html.index('id="page-settings"'):]
+    assert 'class="panel-head"><h2>飞书通道</h2>' not in settings_html
     assert ".settings-grid {\n  display: flex;" in css
+    assert ".settings-section" in css
+    assert ".settings-section-title" in css
     assert ".settings-form {\n  display: grid;" in css
     assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
     assert ".settings-grid .settings-row {\n  display: flex;" in css

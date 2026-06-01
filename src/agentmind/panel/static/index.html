@@ -237,8 +237,8 @@
         <button class="btn-primary" type="button" data-action="save-retention-settings">保存保留设置</button>
       </header>
       <div class="settings-grid">
-        <section class="panel">
-          <div class="panel-head"><h2>飞书通道</h2></div>
+        <section class="settings-section" id="settings-feishu-section">
+          <div class="settings-section-title">飞书通道</div>
           <div class="settings-form">
             <label class="settings-row"><span>应用 ID</span><input id="feishu-app-id" type="text" placeholder="cli_xxx"></label>
             <label class="settings-row"><span>应用密钥</span><input id="feishu-app-secret" type="password" placeholder="密钥"></label>
@@ -248,8 +248,8 @@
             </div>
           </div>
         </section>
-        <section class="panel">
-          <div class="panel-head"><h2>语义路由</h2></div>
+        <section class="settings-section" id="settings-semantic-section">
+          <div class="settings-section-title">语义路由</div>
           <div class="settings-form">
             <label class="settings-row"><span>接口地址</span><input id="setting-sr-endpoint" type="text"></label>
             <label class="settings-row"><span>密钥</span><input id="setting-sr-key" type="password"></label>
@@ -259,8 +259,8 @@
             </div>
           </div>
         </section>
-        <section class="panel">
-          <div class="panel-head"><h2>Embedding</h2></div>
+        <section class="settings-section" id="settings-embedding-section">
+          <div class="settings-section-title">Embedding</div>
           <div class="settings-form">
             <label class="settings-row"><span>接口地址</span><input id="setting-emb-endpoint" type="text"></label>
             <label class="settings-row"><span>密钥</span><input id="setting-emb-key" type="password"></label>
@@ -271,8 +271,8 @@
             </div>
           </div>
         </section>
-        <section class="panel">
-          <div class="panel-head"><h2>Core LLM</h2></div>
+        <section class="settings-section" id="settings-core-llm-section">
+          <div class="settings-section-title">Core LLM</div>
           <div class="settings-form">
             <label class="settings-row"><span>接口地址</span><input id="setting-core-llm-endpoint" type="text"></label>
             <label class="settings-row"><span>密钥</span><input id="setting-core-llm-key" type="password"></label>
@@ -282,8 +282,8 @@
             </div>
           </div>
         </section>
-        <section class="panel panel-span-2">
-          <div class="panel-head"><h2>数据保留</h2></div>
+        <section class="settings-section" id="settings-retention-section">
+          <div class="settings-section-title">数据保留</div>
           <div class="settings-form settings-form-wide">
             <label class="settings-row"><span>记忆条数上限</span><input id="setting-max-entries" type="number" placeholder="10000"></label>
             <label class="settings-row"><span>任务条数上限</span><input id="setting-history-max-entries" type="number" placeholder="10000"></label>

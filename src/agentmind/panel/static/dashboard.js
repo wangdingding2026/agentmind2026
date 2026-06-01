@@ -1,7 +1,18 @@
 const API = '/panel/api';
 
+const PAGE_LOADERS = {
+  command: loadCommandCenter,
+  tasks: loadTasksWorkbench,
+  agents: loadAgentsWorkbench,
+  routing: loadRoutingWorkbench,
+  audit: loadAuditWorkbench,
+  memory: loadMemoryWorkbench,
+  orchestrator: loadOrchestrationPlans,
+  settings: loadSettingsWorkbench,
+};
+
 const state = {
-  currentPage: localStorage.getItem('agentmind_commander_page') || 'command',
+  currentPage: normalizePage(localStorage.getItem('agentmind_commander_page')),
   agents: [],
 };
 
@@ -77,29 +88,27 @@ function rowButton(label, action, id, extraClass = '') {
   return '<button class="' + classes + '" type="button" data-action="' + action + '" data-id="' + escapeHtml(id || '') + '">' + escapeHtml(label) + '</button>';
 }
 
+function normalizePage(page) {
+  return PAGE_LOADERS[page] ? page : 'command';
+}
+
 function activatePage(page) {
-  state.currentPage = page;
-  localStorage.setItem('agentmind_commander_page', page);
+  state.currentPage = normalizePage(page);
+  localStorage.setItem('agentmind_commander_page', state.currentPage);
   document.querySelectorAll('.page').forEach(section => {
-    const active = section.id === 'page-' + page;
+    const active = section.id === 'page-' + state.currentPage;
     section.hidden = !active;
     section.classList.toggle('active', active);
   });
   document.querySelectorAll('.nav-item').forEach(button => {
-    button.classList.toggle('active', button.dataset.page === page);
+    button.classList.toggle('active', button.dataset.page === state.currentPage);
   });
-  loadPage(page);
+  loadPage(state.currentPage);
 }
 
 function loadPage(page) {
-  if (page === 'command') loadCommandCenter();
-  if (page === 'tasks') loadTasksWorkbench();
-  if (page === 'agents') loadAgentsWorkbench();
-  if (page === 'routing') loadRoutingWorkbench();
-  if (page === 'audit') loadAuditWorkbench();
-  if (page === 'memory') loadMemoryWorkbench();
-  if (page === 'orchestrator') loadOrchestrationPlans();
-  if (page === 'settings') loadSettingsWorkbench();
+  const loader = PAGE_LOADERS[normalizePage(page)];
+  if (loader) loader();
 }
 
 async function loadCommandCenter() {
@@ -147,7 +156,7 @@ function renderCommandHealth(overview, feishu, embedding) {
 function renderCommandTasks(data) {
   const tasks = (data && data.tasks) || [];
   $('command-tasks-tbody').innerHTML = tasks.slice(0, 10).map(taskRow).join('') ||
-    '<tr><td colspan="6" class="empty">暂无任务</td></tr>';
+    '<tr><td colspan="7" class="empty">暂无任务</td></tr>';
 }
 
 function renderCommandErrors(overview) {
@@ -335,6 +344,7 @@ async function loadAgentsWorkbench() {
 function agentOps(agent) {
   return rowButton('测试', 'test-agent', agent.id) + ' ' +
     rowButton('重启', 'restart-agent', agent.id) + ' ' +
+    rowButton('标签', 'edit-agent-tags', agent.id) + ' ' +
     rowButton(agent.enabled ? '禁用' : '启用', 'toggle-agent', agent.id);
 }
 
@@ -371,6 +381,21 @@ async function toggleAgent(agentId) {
   const data = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/toggle', { method: 'POST' });
   showToast(data && data.error ? '切换失败: ' + data.error : agentId + (data && data.enabled ? ' 已启用' : ' 已禁用'), data && data.error ? 'error' : 'success');
   loadAgentsWorkbench();
+}
+
+async function editAgentTags(agentId) {
+  const agent = state.agents.find(item => item.id === agentId) || {};
+  const current = (agent.tags || []).join(', ');
+  const input = prompt('编辑标签，多个标签用英文逗号分隔', current);
+  if (input == null) return;
+  const tags = input.split(',').map(tag => tag.trim()).filter(Boolean);
+  const data = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/tags', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  });
+  showToast(data && data.error ? '标签保存失败: ' + data.error : '标签已保存', data && data.error ? 'error' : 'success');
+  if (data) loadAgentsWorkbench();
 }
 
 async function addAgent() {
@@ -539,6 +564,10 @@ async function loadOrchestrationPlans() {
   }
 }
 
+function loadOrchPlans() {
+  return loadOrchestrationPlans();
+}
+
 async function deleteOrchestration(planId) {
   if (!confirm('确认删除这个编排计划？删除后无法恢复')) return;
   const resp = await fetch('/v1/orchestrations/' + encodeURIComponent(planId), { method: 'DELETE' });
@@ -636,7 +665,7 @@ async function toggleSemantic() {
     model: $('setting-sr-model').value.trim(),
     timeout_seconds: 5,
   }});
-  setToggleBtn('btn-sr-toggle', enabled);
+  if (ok) setToggleBtn('btn-sr-toggle', enabled);
   showToast(ok ? (enabled ? '语义路由已启用' : '语义路由已禁用') : '保存失败', ok ? 'success' : 'error');
 }
 
@@ -654,8 +683,8 @@ async function toggleEmbedding() {
     dimension: 768,
     timeout_seconds: 10,
   }});
-  setToggleBtn('btn-emb-toggle', enabled);
-  loadEmbeddingStatus();
+  if (ok) setToggleBtn('btn-emb-toggle', enabled);
+  if (ok) loadEmbeddingStatus();
   showToast(ok ? (enabled ? 'Embedding 已启用' : 'Embedding 已禁用') : '保存失败', ok ? 'success' : 'error');
 }
 
@@ -672,7 +701,7 @@ async function toggleCoreLLM() {
     model: $('setting-core-llm-model').value.trim() || 'glm-4',
     timeout_seconds: 10,
   }});
-  setToggleBtn('btn-core-llm-toggle', enabled);
+  if (ok) setToggleBtn('btn-core-llm-toggle', enabled);
   showToast(ok ? (enabled ? 'Core LLM 已启用' : 'Core LLM 已禁用') : '保存失败', ok ? 'success' : 'error');
 }
 
@@ -709,6 +738,7 @@ function handleAction(action, id) {
     'add-agent': addAgent,
     'test-agent': () => testAgent(id),
     'restart-agent': () => restartAgent(id),
+    'edit-agent-tags': () => editAgentTags(id),
     'toggle-agent': () => toggleAgent(id),
     'toggle-route-form': () => { $('route-form').hidden = !$('route-form').hidden; },
     'save-route-rule': saveRouteRule,

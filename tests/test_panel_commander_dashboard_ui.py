@@ -139,7 +139,7 @@ def test_panel_settings_page_uses_horizontal_form_rows():
     assert 'class="settings-form"' in html
     assert html.count('class="settings-row"') >= 14
     assert ".settings-grid .settings-row" in css
-    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
+    assert "width: clamp(150px, 18vw, 260px);" in css
     assert ".settings-actions" in css
     assert ".settings-grid label { padding:" not in css
     assert ".settings-grid label {\n  display: flex;\n  flex-direction: column;" not in css
@@ -159,9 +159,11 @@ def test_panel_settings_page_lays_out_fields_across_each_panel():
     assert ".settings-grid {\n  display: flex;" in css
     assert ".settings-section" in css
     assert ".settings-section-title" in css
-    assert ".settings-form {\n  display: grid;" in css
-    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
-    assert ".settings-grid .settings-row {\n  display: flex;" in css
+    assert ".settings-form {\n  display: flex;" in css
+    assert "flex-wrap: wrap;" in css
+    assert ".settings-grid .settings-row {\n  display: inline-flex;" in css
+    assert "flex-direction: row;" in css
+    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" not in css
     settings_actions = re.search(r"\.settings-actions \{(?P<body>.*?)\n\}", css, re.S)
     assert settings_actions is not None
     assert "padding-left: 0;" in settings_actions.group("body")

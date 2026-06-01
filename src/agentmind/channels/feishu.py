@@ -6,21 +6,46 @@ import logging
 import re
 import threading
 from collections import deque
+from typing import TYPE_CHECKING
 
-import lark_oapi as lark
-from lark_oapi.api.im.v1 import (
-    CreateMessageReactionRequest, CreateMessageReactionRequestBody,
-    CreateMessageRequest, CreateMessageRequestBody,
-    DeleteMessageReactionRequest,
-    Emoji,
-    P2ImMessageReceiveV1,
-    ReplyMessageRequest, ReplyMessageRequestBody,
-)
-from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
+if TYPE_CHECKING:
+    from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
 
 from .base import ChannelAdapter
 
 logger = logging.getLogger("agentmind.channel.feishu")
+_LARK_MODULES: dict[str, object] | None = None
+
+
+def _load_lark_modules() -> dict[str, object]:
+    """Load Feishu SDK only when a real Feishu operation needs it."""
+    global _LARK_MODULES
+    if _LARK_MODULES is not None:
+        return _LARK_MODULES
+
+    import lark_oapi as lark
+    from lark_oapi.api.im.v1 import (
+        CreateMessageReactionRequest, CreateMessageReactionRequestBody,
+        CreateMessageRequest, CreateMessageRequestBody,
+        DeleteMessageReactionRequest,
+        Emoji,
+        ReplyMessageRequest, ReplyMessageRequestBody,
+    )
+    from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
+
+    _LARK_MODULES = {
+        "lark": lark,
+        "CreateMessageReactionRequest": CreateMessageReactionRequest,
+        "CreateMessageReactionRequestBody": CreateMessageReactionRequestBody,
+        "CreateMessageRequest": CreateMessageRequest,
+        "CreateMessageRequestBody": CreateMessageRequestBody,
+        "DeleteMessageReactionRequest": DeleteMessageReactionRequest,
+        "Emoji": Emoji,
+        "ReplyMessageRequest": ReplyMessageRequest,
+        "ReplyMessageRequestBody": ReplyMessageRequestBody,
+        "EventDispatcherHandler": EventDispatcherHandler,
+    }
+    return _LARK_MODULES
 
 
 class FeishuAdapter(ChannelAdapter):
@@ -32,12 +57,19 @@ class FeishuAdapter(ChannelAdapter):
         self.message_callback = message_callback
 
         self._message_queue: asyncio.Queue = asyncio.Queue()
-        self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).build()
+        self._api_client = None
         self._ws_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._main_loop_task: asyncio.Task | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._processed_msgs: deque[str] = deque(maxlen=1000)
+
+    def _get_api_client(self):
+        if self._api_client is None:
+            sdk = _load_lark_modules()
+            lark = sdk["lark"]
+            self._api_client = lark.Client.builder().app_id(self.app_id).app_secret(self.app_secret).build()
+        return self._api_client
 
     async def start(self):
         if self._ws_thread and self._ws_thread.is_alive():
@@ -56,6 +88,10 @@ class FeishuAdapter(ChannelAdapter):
     async def _add_reaction(self, msg_id: str, emoji_type: str = "MUSCLE") -> str:
         """给消息加表情，返回 reaction_id"""
         try:
+            sdk = _load_lark_modules()
+            CreateMessageReactionRequest = sdk["CreateMessageReactionRequest"]
+            CreateMessageReactionRequestBody = sdk["CreateMessageReactionRequestBody"]
+            Emoji = sdk["Emoji"]
             req = (
                 CreateMessageReactionRequest.builder()
                 .message_id(msg_id)
@@ -66,7 +102,7 @@ class FeishuAdapter(ChannelAdapter):
                 )
                 .build()
             )
-            resp = await asyncio.to_thread(self._api_client.im.v1.message_reaction.create, req)
+            resp = await asyncio.to_thread(self._get_api_client().im.v1.message_reaction.create, req)
             logger.info("表情已添加: msg_id=%s reaction_id=%s", msg_id, resp.data.reaction_id if resp.data else "none")
             return resp.data.reaction_id if resp.data else ""
         except Exception as e:
@@ -78,13 +114,15 @@ class FeishuAdapter(ChannelAdapter):
         if not reaction_id:
             return
         try:
+            sdk = _load_lark_modules()
+            DeleteMessageReactionRequest = sdk["DeleteMessageReactionRequest"]
             req = (
                 DeleteMessageReactionRequest.builder()
                 .message_id(msg_id)
                 .reaction_id(reaction_id)
                 .build()
             )
-            await asyncio.to_thread(self._api_client.im.v1.message_reaction.delete, req)
+            await asyncio.to_thread(self._get_api_client().im.v1.message_reaction.delete, req)
             logger.info("表情已移除: msg_id=%s", msg_id)
         except Exception as e:
             logger.warning("移除表情失败: %s", e)
@@ -94,7 +132,10 @@ class FeishuAdapter(ChannelAdapter):
         chunks = [content[i:i + MAX_LEN] for i in range(0, len(content), MAX_LEN)]
         for chunk in chunks:
             try:
+                sdk = _load_lark_modules()
                 if root_msg_id:
+                    ReplyMessageRequest = sdk["ReplyMessageRequest"]
+                    ReplyMessageRequestBody = sdk["ReplyMessageRequestBody"]
                     # 回复消息：显示在原消息下方
                     req = (
                         ReplyMessageRequest.builder()
@@ -107,8 +148,10 @@ class FeishuAdapter(ChannelAdapter):
                         )
                         .build()
                     )
-                    await asyncio.to_thread(self._api_client.im.v1.message.reply, req)
+                    await asyncio.to_thread(self._get_api_client().im.v1.message.reply, req)
                 else:
+                    CreateMessageRequest = sdk["CreateMessageRequest"]
+                    CreateMessageRequestBody = sdk["CreateMessageRequestBody"]
                     req = (
                         CreateMessageRequest.builder()
                         .receive_id_type("open_id")
@@ -121,7 +164,7 @@ class FeishuAdapter(ChannelAdapter):
                         )
                         .build()
                     )
-                    await asyncio.to_thread(self._api_client.im.v1.message.create, req)
+                    await asyncio.to_thread(self._get_api_client().im.v1.message.create, req)
             except Exception as e:
                 logger.error("飞书消息发送异常: %s", e)
 
@@ -147,6 +190,9 @@ class FeishuAdapter(ChannelAdapter):
         # SDK 在模块加载时调了 asyncio.get_event_loop()，必须在独立线程中替换
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        sdk = _load_lark_modules()
+        lark = sdk["lark"]
+        EventDispatcherHandler = sdk["EventDispatcherHandler"]
         import lark_oapi.ws.client as _ws_client
         _ws_client.loop = loop
 
@@ -172,7 +218,7 @@ class FeishuAdapter(ChannelAdapter):
                 pass
             loop.close()
 
-    def _on_message(self, data: P2ImMessageReceiveV1):
+    def _on_message(self, data: "P2ImMessageReceiveV1"):
         try:
             event = data.event
             msg_id = event.message.message_id

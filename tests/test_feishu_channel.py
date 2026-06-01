@@ -1,32 +1,27 @@
 """飞书通道适配器测试"""
 import asyncio
-import warnings
+import sys
 from unittest.mock import AsyncMock
 
 import pytest
 
 
-def _import_feishu_adapter():
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"datetime\.datetime\.utcfromtimestamp\(\) is deprecated.*",
-            category=DeprecationWarning,
-            module=r"lark_oapi\.ws\.pb\.google\.protobuf\.internal\.well_known_types",
-        )
-        warnings.filterwarnings(
-            "ignore",
-            message=r"There is no current event loop",
-            category=DeprecationWarning,
-            module=r"lark_oapi\.ws\.client",
-        )
-        from agentmind.channels.feishu import FeishuAdapter
-    return FeishuAdapter
-
-
 class TestFeishuTextCleaning:
+    def test_feishu_adapter_import_and_init_do_not_load_lark_sdk(self):
+        sys.modules.pop("agentmind.channels.feishu", None)
+        for name in list(sys.modules):
+            if name == "lark_oapi" or name.startswith("lark_oapi."):
+                sys.modules.pop(name, None)
+
+        from agentmind.channels.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter("fake_id", "fake_secret", None)
+
+        assert adapter.app_id == "fake_id"
+        assert "lark_oapi" not in sys.modules
+
     def test_extract_text_removes_at_tags(self):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         adapter = FeishuAdapter("fake_id", "fake_secret", None)
         raw = '{"text":"hello <at user_id=\\"u123\\"> </at>world"}'
@@ -34,7 +29,7 @@ class TestFeishuTextCleaning:
         assert result == "hello world"
 
     def test_extract_text_no_tags(self):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         adapter = FeishuAdapter("fake_id", "fake_secret", None)
         raw = '{"text":"hello world"}'
@@ -42,7 +37,7 @@ class TestFeishuTextCleaning:
         assert result == "hello world"
 
     def test_extract_text_invalid_json(self):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         adapter = FeishuAdapter("fake_id", "fake_secret", None)
         assert adapter._extract_text("not json") == ""
@@ -50,14 +45,14 @@ class TestFeishuTextCleaning:
 
 class TestFeishuDedup:
     def test_duplicate_message_id_filtered(self):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         adapter = FeishuAdapter("fake_id", "fake_secret", None)
         adapter._processed_msgs.append("msg-001")
         assert "msg-001" in adapter._processed_msgs
 
     def test_max_dedup_size(self):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         adapter = FeishuAdapter("fake_id", "fake_secret", None)
         for i in range(1500):
@@ -68,7 +63,7 @@ class TestFeishuDedup:
 
 class TestFeishuStandardMessage:
     def test_feishu_adapter_converts_queue_payload_to_channel_message(self):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
         from agentmind.channels.hub import ChannelMessage
 
         adapter = FeishuAdapter("fake_id", "fake_secret", None)
@@ -92,7 +87,7 @@ class TestFeishuStandardMessage:
 
     @pytest.mark.asyncio
     async def test_feishu_adapter_processes_message_through_standard_callback(self, monkeypatch):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         received = []
 
@@ -136,7 +131,7 @@ class TestFeishuStandardMessage:
 
     @pytest.mark.asyncio
     async def test_feishu_adapter_without_message_callback_does_not_route_legacy_fallback(self, monkeypatch):
-        FeishuAdapter = _import_feishu_adapter()
+        from agentmind.channels.feishu import FeishuAdapter
 
         adapter = FeishuAdapter("fake_id", "fake_secret")
         await adapter._message_queue.put({"sender_id": "u1", "text": "hello", "msg_id": "m1"})

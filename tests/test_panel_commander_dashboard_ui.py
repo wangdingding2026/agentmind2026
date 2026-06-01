@@ -61,6 +61,19 @@ def test_panel_commander_dashboard_has_task_detail_drawer():
     assert missing == []
 
 
+def test_panel_commander_dashboard_deduplicates_command_health_overview():
+    html = _read(PANEL_HTML)
+    js = _read(PANEL_JS)
+
+    assert "系统状态总览" in html
+    assert 'id="command-status-overview"' in html
+    assert "系统健康" not in html
+    assert 'id="command-health-list"' not in html
+    assert "function renderCommandStatusOverview" in js
+    assert "renderCommandMetrics" not in js
+    assert "renderCommandHealth" not in js
+
+
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():
     js = _read(PANEL_JS)
 

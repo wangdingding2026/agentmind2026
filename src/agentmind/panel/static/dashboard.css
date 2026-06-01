@@ -85,11 +85,28 @@ body {
   letter-spacing: 0;
 }
 
+.status-overview { margin-bottom: 1rem; }
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #344054;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(130px, 1fr));
   gap: 0.75rem;
   margin-bottom: 1rem;
+}
+.status-overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 0;
 }
 .metric-card {
   background: var(--surface);
@@ -104,6 +121,7 @@ body {
 .metric-card.orange { border-left-color: var(--orange); }
 .metric-value { margin: 0; font-size: 1.45rem; font-weight: 700; }
 .metric-label { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.78rem; }
+.metric-detail { margin: 0.12rem 0 0; color: var(--muted); font-size: 0.72rem; }
 
 .dashboard-grid, .split-grid, .settings-grid {
   display: grid;

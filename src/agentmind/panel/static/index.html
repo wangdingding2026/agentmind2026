@@ -35,7 +35,12 @@
         </div>
         <button class="btn-outline" type="button" data-action="refresh-current">刷新</button>
       </header>
-      <div class="metric-grid" id="command-metrics"></div>
+      <section class="status-overview" aria-labelledby="command-status-title">
+        <div class="section-head">
+          <h2 id="command-status-title">系统状态总览</h2>
+        </div>
+        <div class="metric-grid status-overview-grid" id="command-status-overview"></div>
+      </section>
       <div class="dashboard-grid">
         <section class="panel panel-span-2">
           <div class="panel-head">
@@ -48,10 +53,6 @@
               <tbody id="command-tasks-tbody"></tbody>
             </table>
           </div>
-        </section>
-        <section class="panel">
-          <div class="panel-head"><h2>系统健康</h2></div>
-          <div class="stack-list" id="command-health-list"></div>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>最近错误</h2></div>

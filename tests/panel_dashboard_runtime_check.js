@@ -229,7 +229,14 @@ async function main() {
     const activePage = document.getElementById('page-' + page);
     assert(activePage && !activePage.hidden, 'page not visible: ' + page);
   }
-  assert(document.getElementById('command-metrics').innerHTML.includes('Agent'));
+  const statusOverview = document.getElementById('command-status-overview').innerHTML;
+  assert(statusOverview.includes('整体状态'));
+  assert(statusOverview.includes('Agent 健康'));
+  assert(statusOverview.includes('1/2'));
+  assert(statusOverview.includes('任务'));
+  assert(statusOverview.includes('1 失败'));
+  assert(statusOverview.includes('飞书通道'));
+  assert(statusOverview.includes('Embedding'));
   assert(document.getElementById('command-tasks-tbody').innerHTML.includes('run task'));
 
   document.getElementById('task-status-filter').value = 'failed';

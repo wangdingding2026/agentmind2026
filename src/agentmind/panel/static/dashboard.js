@@ -119,38 +119,34 @@ async function loadCommandCenter() {
     fetchAPI('/embedding/status'),
     fetchAPI('/tasks?limit=50'),
   ]);
-  renderCommandMetrics(overview, memory);
-  renderCommandHealth(overview, feishu, embedding);
+  renderCommandStatusOverview(overview, memory, feishu, embedding);
   renderCommandTasks(tasks);
   renderCommandErrors(overview);
   renderCommandRouting(overview);
   renderCommandAudit(overview);
 }
 
-function renderCommandMetrics(overview, memory) {
+function renderCommandStatusOverview(overview, memory, feishu, embedding) {
   const summary = (overview && overview.summary) || {};
-  const metrics = [
-    ['Agent', summary.agents_total, ''],
-    ['健康 Agent', summary.agents_healthy, 'green'],
-    ['总任务', summary.tasks_total, ''],
-    ['失败任务', summary.tasks_failed, summary.tasks_failed ? 'red' : 'green'],
-    ['记忆', memory && memory.total, ''],
+  const agentsTotal = summary.agents_total ?? 0;
+  const agentsHealthy = summary.agents_healthy ?? 0;
+  const tasksTotal = summary.tasks_total ?? 0;
+  const tasksFailed = summary.tasks_failed ?? 0;
+  const feishuState = feishu && feishu.connected ? '已连接' : feishu && feishu.enabled ? '连接中' : '未启用';
+  const embeddingState = embedding && embedding.has_local_model ? '本地可用' : 'API/关键词后备';
+  const cards = [
+    ['整体状态', overview ? overview.status : 'unknown', overview && overview.status === 'healthy' ? 'green' : 'orange', '控制面当前汇总状态'],
+    ['Agent 健康', agentsHealthy + '/' + agentsTotal, agentsHealthy === agentsTotal && agentsTotal > 0 ? 'green' : 'orange', '健康数 / 总数'],
+    ['任务', tasksTotal + ' 总数', tasksFailed ? 'red' : 'green', tasksFailed + ' 失败'],
+    ['记忆', (memory && memory.total) ?? 0, '', '团队与个人记忆条目'],
+    ['飞书通道', feishuState, feishu && feishu.connected ? 'green' : '', '外部消息连接'],
+    ['Embedding', embeddingState, embedding && embedding.has_local_model ? 'green' : 'orange', '向量能力状态'],
   ];
-  $('command-metrics').innerHTML = metrics.map(([label, value, cls]) => (
+  $('command-status-overview').innerHTML = cards.map(([label, value, cls, detail]) => (
     '<div class="metric-card ' + cls + '"><p class="metric-value">' + escapeHtml(value ?? 0) +
-    '</p><p class="metric-label">' + escapeHtml(label) + '</p></div>'
+    '</p><p class="metric-label">' + escapeHtml(label) + '</p><p class="metric-detail">' +
+    escapeHtml(detail || '') + '</p></div>'
   )).join('');
-}
-
-function renderCommandHealth(overview, feishu, embedding) {
-  const summary = (overview && overview.summary) || {};
-  const items = [
-    ['整体状态', overview ? overview.status : 'unknown'],
-    ['Agent 健康', (summary.agents_healthy ?? 0) + '/' + (summary.agents_total ?? 0)],
-    ['飞书通道', feishu && feishu.connected ? '已连接' : feishu && feishu.enabled ? '连接中' : '未启用'],
-    ['Embedding', embedding && embedding.has_local_model ? '本地可用' : 'API/关键词后备'],
-  ];
-  $('command-health-list').innerHTML = items.map(([title, meta]) => listItem(title, meta)).join('');
 }
 
 function renderCommandTasks(data) {

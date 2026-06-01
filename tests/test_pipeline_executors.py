@@ -78,20 +78,30 @@ class _TaskServiceRecorder:
 # ── PromptEnvelope ──
 
 class TestPromptEnvelope:
-    def test_empty_memories(self):
+    def test_empty_memories_with_list(self):
+        """列表输入（兼容旧调用方）返回原始消息。"""
         assert PromptEnvelope.build("hello", []) == "hello"
 
-    def test_with_memories(self):
-        mems = [{"content": "问题", "summary": "答案"}]
-        result = PromptEnvelope.build("新问题", mems)
-        assert "系统注入" in result
-        assert "用户问「问题」→ 答案" in result
+    def test_none_returns_raw(self):
+        assert PromptEnvelope.build("hello", None) == "hello"
+
+    def test_with_assembled_context(self):
+        from agentmind.memory.dto import MemoryContext
+        mc = MemoryContext(
+            assembled_context="[相关记忆]\n[agent] 问：「问题」→ 答案",
+            working_memory=[],
+            recall_items=[],
+        )
+        result = PromptEnvelope.build("新问题", mc)
+        assert "[相关记忆]" in result
+        assert "[agent] 问：「问题」→ 答案" in result
         assert "当前指令：新问题" in result
 
-    def test_truncation(self):
-        mems = [{"content": "x" * 500, "summary": "y" * 1500}]
-        result = PromptEnvelope.build("hi", mems)
-        assert len(result) < 3000  # content truncated to 300, summary to 1000
+    def test_list_input_returns_raw(self):
+        """列表输入不再做格式化（格式化由 ContextAssembler 统一完成）。"""
+        mems = [{"content": "问题", "summary": "答案"}]
+        result = PromptEnvelope.build("新问题", mems)
+        assert result == "新问题"
 
 
 # ── ExecutorBase ──
@@ -179,10 +189,95 @@ class TestExecutorBase:
         assert calls == [("a1", "msg", None)]
         assert error is None
 
+    @pytest.mark.asyncio
+    async def test_agentmind_self_reply_skips_task_memory_write(self, monkeypatch):
+        """agentmind 自答不写入任务记忆（避免自循环）。"""
+        calls = []
+
+        async def fake_record_task_end(*args, **kwargs):
+            return None
+
+        class FakeMemoryWriter:
+            @staticmethod
+            async def write_task(trace_id, agent_id, user_message, result, user_id="", source_kind="conversation_turn"):
+                calls.append({
+                    "trace_id": trace_id,
+                    "agent_id": agent_id,
+                })
+
+        monkeypatch.setattr("agentmind.routing.executors.base.record_task_end", fake_record_task_end)
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter", FakeMemoryWriter)
+
+        executor = ExecutorBase(_mock_registry({}))
+        await executor._record_success(
+            "tr-self",
+            "agentmind",
+            "你是谁",
+            "我是 AgentMind",
+            "u_self",
+        )
+
+        assert calls == []  # agentmind 不写入任务记忆
+
 
 # ── SelfReplyExecutor ──
 
 class TestSelfReplyExecutor:
+    @pytest.mark.asyncio
+    async def test_self_reply_uses_reply_text(self):
+        """SelfReplyExecutor 对非历史查询直接返回 reply_text"""
+        decision = _make_decision(
+            agent_id="agentmind",
+            reply_text="我是 AgentMind，可以帮你路由任务。",
+        )
+        reply = await SelfReplyExecutor(_mock_registry({}))._build_reply(decision)
+        assert reply == "我是 AgentMind，可以帮你路由任务。"
+
+    @pytest.mark.asyncio
+    async def test_self_reply_no_reply_text_returns_fallback(self, monkeypatch):
+        """SelfReplyExecutor 无 reply_text 且 LLM 不可用时返回兜底提示"""
+        async def _fake_llm_reply(self, decision):
+            return None
+
+        monkeypatch.setattr(
+            "agentmind.routing.executors.self_reply.SelfReplyExecutor._call_llm_for_reply",
+            _fake_llm_reply,
+        )
+
+        decision = _make_decision(
+            agent_id="agentmind",
+            reply_text="",
+        )
+        reply = await SelfReplyExecutor(_mock_registry({}))._build_reply(decision)
+        assert "抱歉" in reply
+
+    @pytest.mark.asyncio
+    async def test_self_reply_skips_memory_write_for_agentmind(self, monkeypatch):
+        """agentmind 自答不通过 MemoryWriter 写入记忆（避免自循环）。"""
+        write_task_called = False
+
+        async def fake_write_task(*args, **kwargs):
+            nonlocal write_task_called
+            write_task_called = True
+
+        decision = _make_decision(
+            agent_id="agentmind",
+            reply_text="self reply",
+            context=_make_ctx(raw_message="hello"),
+        )
+
+        monkeypatch.setattr("agentmind.routing.executors.self_reply.record_task_update", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.base.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter.write_task", fake_write_task)
+
+        executor = SelfReplyExecutor(_mock_registry({}))
+        chunks = []
+        async for chunk in executor.run_text(decision, "t1", "u1"):
+            chunks.append(chunk)
+
+        assert chunks == ["self reply"]
+        assert not write_task_called  # agentmind 不写任务记忆
+
     @pytest.mark.asyncio
     async def test_run_json(self, monkeypatch):
         decision = _make_decision(agent_id="agentmind", reply_text="你好，我是AgentMind")
@@ -694,16 +789,6 @@ class TestRuleEngineStrategy:
         assert result is None
 
 
-# ── IntentClassifier ──
-
-class TestIntentClassifier:
-    def test_default_single_task(self):
-        from agentmind.routing.classifier.intent import Intent, IntentClassifier
-        ctx = _make_ctx()
-        intent = IntentClassifier().classify(ctx)
-        assert intent == Intent.SINGLE_TASK
-
-
 # ── RoutingPipeline integration ──
 
 class TestRoutingPipeline:
@@ -742,10 +827,57 @@ class TestRoutingPipeline:
                 return None
 
         manager = StrategyManager(reg, _NoRuleEngine())
-        manager.set_enabled("llm_routing", False)
+        manager.set_enabled("semantic_intent", False)
         pipeline = RoutingPipeline(reg, _NoRuleEngine(), strategy_manager=manager)
 
         decision = await pipeline.run("hello", RequestIdentity(trace_id="t1", user_id="u1"), {})
 
         assert decision.agent_id == "a1"
-        assert "llm_routing" not in [s.name for s in manager.get_enabled_strategies({})]
+        assert "semantic_intent" not in [s.name for s in manager.get_enabled_strategies({})]
+
+    @pytest.mark.asyncio
+    async def test_pipeline_propagates_semantic_intent_from_strategy_result(self):
+        from agentmind.routing.pipeline import RoutingPipeline
+        from agentmind.routing.context import RequestIdentity
+        from agentmind.routing.semantic_intent import SemanticIntent, SemanticIntentType
+        from agentmind.routing.strategies.base import RoutingStrategy, StrategyResult
+
+        intent = SemanticIntent(
+            intent=SemanticIntentType.CONVERSATION_HISTORY,
+            confidence=0.92,
+            time_scope="today",
+            requested_format="qa_summary",
+        )
+
+        class _SemanticStrategy(RoutingStrategy):
+            def __init__(self):
+                super().__init__(name="semantic_intent", priority=20)
+
+            async def evaluate(self, ctx):
+                return StrategyResult(
+                    agent_id="agentmind",
+                    confidence=0.92,
+                    reason="语义意图: conversation_history",
+                    semantic_intent=intent,
+                )
+
+        class _Manager:
+            def get_enabled_strategies(self, settings):
+                return [_SemanticStrategy()]
+
+        class _NoRuleEngine:
+            async def match(self, message):
+                return None
+
+        reg = _mock_registry({})
+        pipeline = RoutingPipeline(reg, _NoRuleEngine(), strategy_manager=_Manager())
+
+        decision = await pipeline.run(
+            "今天聊过什么",
+            RequestIdentity(trace_id="t1", user_id="u1"),
+            {},
+        )
+
+        assert decision.agent_id == "agentmind"
+        assert decision.semantic_intent is intent
+        assert decision.context.semantic_intent is intent

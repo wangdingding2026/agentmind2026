@@ -17,3 +17,9 @@ venv/
 *~
 .DS_Store
 .pytest_cache/
+
+# Internal planning documents (published in docs/ instead)
+AGENTMIND_*.md
+docs/superpowers/plans/
+skills-lock.json
+gen_doc.py

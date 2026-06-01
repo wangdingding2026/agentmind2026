@@ -17,9 +17,10 @@ _DISPATCH_PROMPT = (
     "AgentMind 本身不做 AI 推理，职责是：路由指令到后端 Agent、管理进程、维护共享记忆、桥接飞书。\n"
     "\n"
     "规则：\n"
-    "1. 寒暄/自我介绍/「你能做什么」/Agent推荐/记忆检索/历史查询/「还记得」/「聊过什么」 → action: reply，简短回复（≤150字），用「Agent 路由器/进程管理器/共享记忆/飞书桥接」四句话介绍自己\n"
-    "2. 需要写代码/查资料/搜索/执行任务 → action: route，指定最合适的 agent_id\n"
-    "3. 不确定 → action: route，选择最通用的 agent\n"
+    "1. 寒暄/自我介绍/「你能做什么」/Agent推荐 → action: reply，简短回复（≤150字）\n"
+    "2. 记忆检索/历史查询/「还记得」/「聊过什么」/「今天/昨天聊过什么」 → action: route，agent_id=agentmind，confidence=0.9\n"
+    "3. 需要写代码/查资料/搜索/执行任务 → action: route，指定最合适的 agent_id\n"
+    "4. 不确定 → action: route，选择最通用的 agent\n"
     "\n"
     "只返回 JSON，不要其他内容：\n"
     '{"action": "reply", "reply": "回复内容"} 或\n'
@@ -28,10 +29,9 @@ _DISPATCH_PROMPT = (
 
 
 class LLMRoutingStrategy(RoutingStrategy):
-    """LLM 语义路由：判断自答还是路由到后端 Agent。
+    """旧版 freeform LLM 路由，仅保留给显式兼容场景。
 
-    一次 LLM 调用同时覆盖自答和路由。未配置或调用失败时弃权。
-    优先级 20。
+    默认策略链使用 SemanticIntentStrategy，不再让 LLM 直接生成最终 reply_text。
     """
 
     def __init__(self, agent_registry, settings: dict):

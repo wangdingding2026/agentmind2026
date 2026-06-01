@@ -96,8 +96,9 @@ class SqliteMemoryRepository:
                 """INSERT INTO memory_cards
                    (memory_id, raw_memory_id, user_id, summary, source_agent, source_task_id,
                     memory_type, conversation_id, importance, tags, access_level,
-                    card_text, source_refs, score_metadata, session_id, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    card_text, source_refs, score_metadata, session_id, source_kind,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     memory_id,
                     raw_memory_id,
@@ -114,6 +115,7 @@ class SqliteMemoryRepository:
                     source_refs,
                     score_metadata,
                     session_id,
+                    command.source_kind,
                     now,
                     now,
                 ),
@@ -138,6 +140,7 @@ class SqliteMemoryRepository:
         source_agent: str = "",
         access_levels: list[str] | None = None,
         memory_types: list[str] | None = None,
+        source_kinds: list[str] | None = None,
         conversation_id: str = "",
         exclude_conversation_id: str = "",
         time_range_start: str = "",
@@ -152,12 +155,91 @@ class SqliteMemoryRepository:
             source_agent,
             access_levels or [],
             memory_types or [],
+            source_kinds or [],
             conversation_id,
             exclude_conversation_id,
             time_range_start,
             time_range_end,
             limit,
         )
+
+    async def read_conversation_turns(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str = "",
+        time_range_start: str = "",
+        time_range_end: str = "",
+        limit: int = 50,
+        include_history_answers: bool = False,
+    ) -> list[dict]:
+        return await asyncio.to_thread(
+            self._read_conversation_turns_sync,
+            user_id,
+            conversation_id,
+            time_range_start,
+            time_range_end,
+            limit,
+            include_history_answers,
+        )
+
+    def _read_conversation_turns_sync(
+        self,
+        user_id: str,
+        conversation_id: str,
+        time_range_start: str,
+        time_range_end: str,
+        limit: int,
+        include_history_answers: bool,
+    ) -> list[dict]:
+        clauses = ["c.user_id = ?"]
+        params: list = [user_id]
+        if conversation_id:
+            clauses.append("(c.conversation_id = ? OR c.session_id = ?)")
+            params.extend([conversation_id, conversation_id])
+        if time_range_start:
+            clauses.append("c.created_at >= ?")
+            params.append(time_range_start)
+        if time_range_end:
+            clauses.append("c.created_at <= ?")
+            params.append(time_range_end)
+        if not include_history_answers:
+            clauses.append("c.source_kind != ?")
+            params.append("conversation_history_answer")
+        where = " AND ".join(clauses)
+        params.append(limit)
+
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                f"""SELECT c.memory_id, c.summary, c.source_agent, c.source_kind,
+                           c.conversation_id, c.created_at,
+                           r.content AS question
+                    FROM memory_cards c
+                    JOIN raw_memory r ON r.memory_id = c.raw_memory_id
+                    WHERE {where}
+                    ORDER BY c.created_at ASC, c.memory_id ASC
+                    LIMIT ?""",
+                params,
+            ).fetchall()
+        finally:
+            conn.close()
+
+        import re as _re
+        results = []
+        for row in rows:
+            answer = (row["summary"] or "").strip()
+            answer = _re.sub(r'^\[[^\]]+\]\s*', '', answer)
+            results.append({
+                "memory_id": row["memory_id"],
+                "created_at": row["created_at"],
+                "conversation_id": row["conversation_id"],
+                "source_agent": row["source_agent"],
+                "source_kind": row["source_kind"],
+                "question": (row["question"] or "").strip(),
+                "answer": answer,
+            })
+        return results
 
     async def get_recent_cards(
         self,
@@ -182,6 +264,7 @@ class SqliteMemoryRepository:
         source_agent: str,
         access_levels: list[str],
         memory_types: list[str],
+        source_kinds: list[str],
         conversation_id: str,
         exclude_conversation_id: str,
         time_range_start: str,
@@ -212,6 +295,10 @@ class SqliteMemoryRepository:
             placeholders = ",".join("?" for _ in memory_types)
             clauses.append(f"memory_type IN ({placeholders})")
             params.extend(memory_types)
+        if source_kinds:
+            placeholders = ",".join("?" for _ in source_kinds)
+            clauses.append(f"source_kind IN ({placeholders})")
+            params.extend(source_kinds)
         if conversation_id:
             clauses.append("(conversation_id = ? OR session_id = ?)")
             params.extend([conversation_id, conversation_id])
@@ -727,7 +814,7 @@ class SqliteMemoryRepository:
         rows = conn.execute(sql, params + [limit * 3]).fetchall()
         archive_rows = [self._row_to_archive(row, table_name) for row in rows]
         if query:
-            terms = self._query_terms(query)
+            terms = _query_terms(query)
             archive_rows = [
                 row for row in archive_rows
                 if any(term in (row.get("summary", "") + "\n" + row.get("content", "")) for term in terms)
@@ -747,20 +834,6 @@ class SqliteMemoryRepository:
         d["created_at"] = d.get("original_created_at", "")
         d["_route"] = "archive"
         return d
-
-    @staticmethod
-    def _query_terms(query_text: str) -> list[str]:
-        text = query_text.strip()
-        if not text:
-            return []
-        terms = [text]
-        terms.extend(re.findall(r"[A-Za-z0-9_./:-]+", text))
-        terms.extend(re.findall(r"[\u4e00-\u9fff]{2,}", text))
-        cjk_only = "".join(re.findall(r"[\u4e00-\u9fff]", text))
-        for width in (4, 3, 2):
-            for index in range(max(0, len(cjk_only) - width + 1)):
-                terms.append(cjk_only[index:index + width])
-        return [term for term in dict.fromkeys(terms) if term]
 
     async def create_result_set(
         self,
@@ -1262,6 +1335,7 @@ class SqliteMemoryRepository:
                 card[key] = json.loads(card.get(key) or json.dumps(fallback))
             except (json.JSONDecodeError, TypeError):
                 card[key] = fallback
+        card.setdefault("source_kind", (card.get("source_refs") or {}).get("source_kind", "task"))
         return card
 
     def _score_card(self, card: dict, query: str) -> float:

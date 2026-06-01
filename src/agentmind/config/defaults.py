@@ -1,32 +1,10 @@
 from agentmind.storage.db import CONFIG_DIR
 
 ROUTES_YAML_TEMPLATE = """\
-rules:
-  - name: code
-    type: keyword
-    patterns: ["写", "代码", "函数", "修复", "重构", "接口", "bug", "class", "def", "补全", "生成"]
-    target_tags: ["code"]
-    priority: 10
-  - name: search
-    type: keyword
-    patterns: ["搜索", "查", "什么是", "怎么", "推荐", "最新", "新闻"]
-    target_tags: ["search"]
-    priority: 10
-  - name: analysis
-    type: keyword
-    patterns: ["分析", "审查", "检查", "review", "解释", "为什么"]
-    target_tags: ["code"]
-    priority: 10
-  - name: writing
-    type: keyword
-    patterns: ["写文章", "文档", "翻译", "总结", "报告", "文案"]
-    target_tags: ["general"]
-    priority: 10
-  - name: memory
-    type: keyword
-    patterns: ["还记得", "回忆一下", "历史记录", "展开第", "详细说说"]
-    target_agent: "agentmind"
-    priority: 10
+# AgentMind 路由规则
+# 路由策略已统一为：@agent 显式指定 → 语义意图 → 信号评分。
+# 如需启用关键词规则，在策略管理器中注册 rule_engine 策略即可。
+rules: []
 """
 
 

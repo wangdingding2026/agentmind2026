@@ -114,6 +114,7 @@ class ChannelHub:
                 await adapter.send_message(message.sender_id, text)
 
         chunks = []
+        strategy_manager = getattr(app.state, "strategy_manager", None)
         async for chunk in route_stream_func(
             message.text,
             message.sender_id,
@@ -121,6 +122,7 @@ class ChannelHub:
             app.state.rule_engine,
             app.state.settings,
             send_func=_send,
+            strategy_manager=strategy_manager,
         ):
             chunks.append(chunk)
         return chunks

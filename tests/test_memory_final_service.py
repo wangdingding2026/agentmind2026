@@ -128,8 +128,17 @@ async def test_write_memory_dedup_reports_zero_and_does_not_expose_missing_new_i
         "user_id": "u_dedup",
         "memory_type": "semantic",
     })
+    # 内容+摘要完全相同的重复写入 → 应被去重
     second_count = await svc.write_memory({
         "memory_id": "dedup-new-id",
+        "content": "相同事实：部署端口是 8765。",
+        "summary": "部署端口 8765",
+        "user_id": "u_dedup",
+        "memory_type": "semantic",
+    })
+    # 内容相同但摘要不同 → 不应被去重（不同记忆）
+    third_count = await svc.write_memory({
+        "memory_id": "dedup-diff-summary",
         "content": "相同事实：部署端口是 8765。",
         "summary": "重复部署端口 8765",
         "user_id": "u_dedup",
@@ -139,9 +148,13 @@ async def test_write_memory_dedup_reports_zero_and_does_not_expose_missing_new_i
     rows = await svc.search_memory("部署端口 8765", user_id="u_dedup", limit=10)
 
     assert first_count == 1
-    assert second_count == 0
+    assert second_count == 0, "完全相同的 content+summary 应被去重"
+    assert third_count == 1, "相同 content 但不同 summary 不应被去重"
     assert await repo.get_card("dedup-new-id") is None
-    assert [row["memory_id"] for row in rows] == ["dedup-original"]
+    assert await repo.get_card("dedup-diff-summary") is not None
+    assert [row["memory_id"] for row in rows] == [
+        "dedup-diff-summary", "dedup-original",
+    ]
 
 
 @pytest.mark.asyncio

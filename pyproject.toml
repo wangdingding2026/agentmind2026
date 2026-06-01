@@ -2,7 +2,20 @@
 name = "agentmind"
 version = "1.0.0"
 description = "带记忆的AI指挥中枢"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [
+    {name = "AgentMind"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -34,7 +47,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-agentmind = ["panel/static/*"]
+agentmind = ["panel/static/**"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

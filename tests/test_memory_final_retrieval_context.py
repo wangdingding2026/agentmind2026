@@ -1,6 +1,45 @@
 import pytest
 
 
+def _local_today_dates():
+    from datetime import datetime, timedelta, timezone
+
+    from agentmind.services.time_service import to_local
+
+    today = to_local(datetime.now(timezone.utc)).date()
+    yesterday = today - timedelta(days=1)
+    return {
+        "old": yesterday.strftime("%Y-%m-%d"),
+        "today": today.strftime("%Y-%m-%d"),
+    }
+
+
+def test_conversation_history_parser_detects_today_query():
+    from datetime import datetime, timezone
+
+    from agentmind.memory.pipeline.query_understanding import parse_conversation_history_query
+
+    parsed = parse_conversation_history_query(
+        "今天我们聊过什么内容吗",
+        now=datetime(2026, 5, 29, 10, 12, tzinfo=timezone.utc),
+    )
+
+    assert parsed is not None
+    assert parsed.intent == "conversation_history"
+    assert parsed.time_range_start == "2026-05-28 16:00:00"
+    assert parsed.time_range_end == "2026-05-29 15:59:59"
+    assert parsed.current_session is False
+
+
+def test_conversation_history_parser_detects_current_session_query():
+    from agentmind.memory.pipeline.query_understanding import parse_conversation_history_query
+
+    parsed = parse_conversation_history_query("当前session里聊过什么")
+
+    assert parsed is not None
+    assert parsed.current_session is True
+
+
 @pytest.mark.asyncio
 async def test_retrieve_context_does_not_require_v4_retrieval_flag(tmp_path):
     from agentmind.memory.repository_sqlite import SqliteMemoryRepository
@@ -85,6 +124,57 @@ def test_prompt_envelope_accepts_memory_context():
 
 
 @pytest.mark.asyncio
+async def test_self_reply_formats_memory_dates_in_local_timezone():
+    """历史查询日期本地化已由 ConversationHistoryExecutor 处理。"""
+    from agentmind.routing.context import RequestIdentity, RoutingContext, RoutingDecision
+    from agentmind.routing.executors.conversation_history import ConversationHistoryExecutor
+    from agentmind.routing.semantic_intent import SemanticIntent, SemanticIntentType
+
+    intent = SemanticIntent(
+        intent=SemanticIntentType.CONVERSATION_HISTORY,
+        confidence=0.92,
+        time_scope="today",
+        requested_format="qa_summary",
+    )
+    ctx = RoutingContext(
+        identity=RequestIdentity(user_id="u_local_time"),
+        raw_message="今天我们聊过什么内容吗",
+        memories=[{
+            "memory_id": "m1",
+            "content": "你是谁",
+            "summary": "[agentmind] 我是 AgentMind",
+            "source_agent": "agentmind",
+            "created_at": "2026-05-28 16:30:00",
+        }],
+        semantic_intent=intent,
+    )
+
+    class FakeMemoryService:
+        async def read_conversation_turns(self, **kw):
+            return [
+                {
+                    "memory_id": "m1",
+                    "created_at": "2026-05-28 16:30:00",
+                    "conversation_id": "",
+                    "source_agent": "agentmind",
+                    "source_kind": "conversation_turn",
+                    "question": "你是谁",
+                    "answer": "我是 AgentMind",
+                },
+            ]
+
+    from unittest.mock import patch
+    with patch("agentmind.memory.service.MemoryService", FakeMemoryService):
+        reply = await ConversationHistoryExecutor(agent_registry=None).build_reply(
+            RoutingDecision(agent_id="agentmind", context=ctx, semantic_intent=intent),
+            "u_local_time",
+        )
+
+    assert "2026-05-29" in reply
+    assert "2026-05-28" not in reply
+
+
+@pytest.mark.asyncio
 async def test_retrieve_context_creates_result_set_after_merge_for_recent_only_hit(tmp_path):
     from agentmind.memory.dto import MemoryWriteCommand
     from agentmind.memory.repository_sqlite import SqliteMemoryRepository
@@ -118,6 +208,101 @@ async def test_retrieve_context_creates_result_set_after_merge_for_recent_only_h
 
 
 @pytest.mark.asyncio
+async def test_today_conversation_history_query_uses_date_scope_not_keyword_rank(tmp_path):
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    dates = _local_today_dates()
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="old-keyword-today",
+        content="今天日期是多少",
+        summary=f"[hermes] 今天是 {dates['old']}",
+        user_id="u_today_history",
+        source_agent="hermes",
+        source_kind="conversation_turn",
+        created_at=f"{dates['old']} 08:45:22",
+    ))
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="real-today-self",
+        content="你是谁",
+        summary="[agentmind] 我是 AgentMind",
+        user_id="u_today_history",
+        source_agent="agentmind",
+        source_kind="conversation_turn",
+        created_at=f"{dates['today']} 09:00:00",
+    ))
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="real-today-codex",
+        content="@codex 你可以写代码吗？",
+        summary="[codex] 可以。我是 Codex",
+        user_id="u_today_history",
+        source_agent="codex",
+        source_kind="conversation_turn",
+        created_at=f"{dates['today']} 09:08:00",
+    ))
+
+    ctx = await svc.retrieve_context(
+        "今天我们聊过什么内容吗",
+        user_id="u_today_history",
+        settings={"timezone": "Asia/Shanghai", "memory": {"context_max_bytes": 4096}},
+    )
+
+    assert ctx.steps[0] == "conversation_history"
+    assert [row["memory_id"] for row in ctx.recall_items] == [
+        "real-today-codex",
+        "real-today-self",
+    ]
+    assert all(row["created_at"].startswith(dates["today"]) for row in ctx.recall_items)
+
+
+@pytest.mark.asyncio
+async def test_new_session_keeps_today_persistent_conversation_history(tmp_path):
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    dates = _local_today_dates()
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    await svc.write_memory({
+        "memory_id": "task-self-before-new",
+        "content": "你是谁",
+        "summary": "[agentmind] 我是 AgentMind",
+        "user_id": "u_new_history",
+        "source_agent": "agentmind",
+        "source_kind": "conversation_turn",
+        "created_at": f"{dates['today']} 09:00:00",
+    })
+    await svc.write_memory({
+        "memory_id": "task-codex-before-new",
+        "content": "@codex 你可以写代码吗？",
+        "summary": "[codex] 可以。我是 Codex",
+        "user_id": "u_new_history",
+        "source_agent": "codex",
+        "source_kind": "conversation_turn",
+        "created_at": f"{dates['today']} 09:08:00",
+    })
+    svc.add_to_working_memory("u_new_history", "user", "你是谁")
+    svc.add_to_working_memory("u_new_history", "assistant", "我是 AgentMind")
+
+    await svc.new_session("u_new_history")
+
+    ctx = await svc.retrieve_context(
+        "今天我们聊过什么内容吗",
+        user_id="u_new_history",
+        settings={"timezone": "Asia/Shanghai", "memory": {"context_max_bytes": 4096}},
+    )
+
+    assert svc.get_working_memory("u_new_history") == []
+    assert [item["memory_id"] for item in ctx.recall_items] == [
+        "task-codex-before-new",
+        "task-self-before-new",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_retrieve_context_orders_merged_rows_by_score_before_assembly():
     from agentmind.memory.service import MemoryService
 
@@ -142,6 +327,46 @@ async def test_retrieve_context_orders_merged_rows_by_score_before_assembly():
         "relation-high",
         "recent-mid",
         "keyword-low",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_orders_equal_score_recent_rows_newest_first(tmp_path):
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    svc = MemoryService(repository=repo)
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="same-day-old",
+        content="旧的无关键词记录。",
+        summary="旧记录",
+        user_id="u_recent_tie",
+        access_level="shared",
+        importance=0.5,
+        created_at="2026-05-29 09:00:00",
+    ))
+    await repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="same-day-new",
+        content="新的无关键词记录。",
+        summary="新记录",
+        user_id="u_recent_tie",
+        access_level="shared",
+        importance=0.5,
+        created_at="2026-05-29 18:00:00",
+    ))
+
+    ctx = await svc.retrieve_context(
+        "完全不匹配",
+        user_id="u_recent_tie",
+        settings={"memory": {"retrieval_max_candidates": 5, "context_max_bytes": 4096}},
+        limit=2,
+    )
+
+    assert [row["memory_id"] for row in ctx.recall_items[:2]] == [
+        "same-day-new",
+        "same-day-old",
     ]
 
 

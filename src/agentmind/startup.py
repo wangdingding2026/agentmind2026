@@ -18,12 +18,15 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from agentmind.agents.discovery import discover_and_generate
 from agentmind.agents.registry import AgentRegistry
+from agentmind.api.attach_registry import AttachRegistry
 from agentmind.channels.hub import ChannelHub
 from agentmind.config.defaults import generate_default_configs
 from agentmind.core.rule_engine import RuleEngine
 from agentmind.memory.workers.scheduler import MemoryWorkerScheduler
+from agentmind.routing.pipeline import RoutingPipeline
 from agentmind.services.config_service import ConfigService
 from agentmind.services.session_runtime_service import SessionRuntimeService
+from agentmind.services.strategy_manager import StrategyManager
 from agentmind.storage.db import DATA_HOME, initialize_data_directory, mark_timed_out_tasks_retriable
 
 logger = logging.getLogger("agentmind")
@@ -146,12 +149,8 @@ class AgentMindBootstrapper:
         rule_path = self.data_home / "config" / "routes.yaml"
         agent_registry = AgentRegistry(agents_path)
         rule_engine = RuleEngine(rule_path, agent_registry=agent_registry)
-        strategy_manager = __import__(
-            "agentmind.services.strategy_manager", fromlist=["StrategyManager"]
-        ).StrategyManager(agent_registry, rule_engine)
-        attach_registry = __import__(
-            "agentmind.api.attach_registry", fromlist=["AttachRegistry"]
-        ).AttachRegistry()
+        strategy_manager = StrategyManager(agent_registry, rule_engine)
+        attach_registry = AttachRegistry()
         auth_token, token_is_new = load_or_generate_token(self.data_home)
 
         @asynccontextmanager
@@ -204,9 +203,7 @@ class AgentMindBootstrapper:
         app.state.rule_engine = rule_engine
         app.state.strategy_manager = strategy_manager
         app.state.attach_registry = attach_registry
-        app.state.routing_pipeline = __import__(
-            "agentmind.routing.pipeline", fromlist=["RoutingPipeline"]
-        ).RoutingPipeline(agent_registry, rule_engine, strategy_manager=strategy_manager)
+        app.state.routing_pipeline = RoutingPipeline(agent_registry, rule_engine, strategy_manager=strategy_manager)
         app.state.agents_config_path = agents_path
 
         @app.middleware("http")

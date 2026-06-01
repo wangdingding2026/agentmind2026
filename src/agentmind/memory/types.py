@@ -33,6 +33,7 @@ class MemoryEntry:
     summary: str = ""
     source_agent: str = ""
     source_task_id: str = ""
+    source_kind: str = "task"
     user_id: str = ""
     memory_type: MemoryType = MemoryType.EPISODIC
     conversation_id: str = ""
@@ -56,6 +57,7 @@ class MemoryEntry:
             "summary": self.summary,
             "source_agent": self.source_agent,
             "source_task_id": self.source_task_id,
+            "source_kind": self.source_kind,
             "user_id": self.user_id,
             "memory_type": self.memory_type.value,
             "conversation_id": self.conversation_id,
@@ -97,6 +99,7 @@ class MemoryEntry:
             summary=d.get("summary", ""),
             source_agent=d.get("source_agent", ""),
             source_task_id=d.get("source_task_id", ""),
+            source_kind=d.get("source_kind", "task"),
             user_id=d.get("user_id", ""),
             memory_type=memory_type,
             conversation_id=d.get("conversation_id", ""),

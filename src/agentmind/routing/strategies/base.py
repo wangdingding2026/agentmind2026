@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 from agentmind.routing.context import RoutingContext
+from agentmind.routing.semantic_intent import SemanticIntent
 
 
 @dataclass
@@ -11,6 +12,7 @@ class StrategyResult:
     reason: str = ""
     alternatives: list[str] = field(default_factory=list)
     reply_text: str = ""
+    semantic_intent: SemanticIntent | None = None
 
 
 class RoutingStrategy(ABC):

@@ -70,9 +70,7 @@ class StrategyManager:
 
     def _register_defaults(self) -> None:
         from agentmind.routing.strategies.explicit_directive import ExplicitDirective
-        from agentmind.routing.strategies.llm_routing import LLMRoutingStrategy
-        from agentmind.routing.strategies.memory_recall import MemoryRecallStrategy
-        from agentmind.routing.strategies.rule_engine import RuleEngineStrategy
+        from agentmind.routing.strategies.semantic_intent import SemanticIntentStrategy
         from agentmind.routing.strategies.signal_scoring import SignalScoringStrategy
 
         self._register(
@@ -83,25 +81,11 @@ class StrategyManager:
             factory=lambda settings: ExplicitDirective(self._agent_registry),
         )
         self._register(
-            "memory_recall",
-            priority=5,
-            kind="auxiliary",
-            required=False,
-            factory=lambda settings: MemoryRecallStrategy(),
-        )
-        self._register(
-            "rule_engine",
-            priority=10,
-            kind="core",
-            required=True,
-            factory=lambda settings: RuleEngineStrategy(self._rule_engine),
-        )
-        self._register(
-            "llm_routing",
+            "semantic_intent",
             priority=20,
             kind="core",
             required=False,
-            factory=lambda settings: LLMRoutingStrategy(self._agent_registry, settings),
+            factory=lambda settings: SemanticIntentStrategy(self._agent_registry, settings),
         )
         self._register(
             "signal_scoring",

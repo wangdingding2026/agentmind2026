@@ -247,14 +247,15 @@ class TestScenarioContextInjection:
         assert result == "hello"
 
     def test_envelope_injects_memories(self):
-        """有记忆时注入上下文前缀"""
+        """有 assembled_context 时 PromptEnvelope 包装上下文"""
         from agentmind.routing.envelope import PromptEnvelope
-        mems = [
-            {"content": "写一个排序", "summary": "之前写了冒泡排序"},
-            {"content": "性能分析", "summary": "分析了时间复杂度"},
-        ]
-        result = PromptEnvelope.build("优化算法", mems)
-        assert "系统注入" in result
+        from agentmind.memory.dto import MemoryContext
+        mc = MemoryContext(
+            assembled_context="[相关记忆]\n[agent] 问：「写一个排序」→ 之前写了冒泡排序\n[agent] 问：「性能分析」→ 分析了时间复杂度",
+            working_memory=[],
+            recall_items=[],
+        )
+        result = PromptEnvelope.build("优化算法", mc)
         assert "冒泡排序" in result
         assert "时间复杂度" in result
         assert "当前指令：优化算法" in result
@@ -509,7 +510,7 @@ class TestScenarioOrchestration:
 
     def test_trigger_word_exact_match(self):
         """编排触发词精确子串匹配"""
-        from agentmind.api.router import _match_orchestration
+        from agentmind.services.routing_service import _match_orchestration
         # 无编排文件时返回 None
         result = _match_orchestration("普通消息")
         assert result is None

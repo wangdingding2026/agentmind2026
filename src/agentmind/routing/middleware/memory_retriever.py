@@ -18,7 +18,15 @@ class MemoryRetriever:
         if followup is not None:
             return followup
 
-        return await svc.retrieve_context(message, user_id=user_id, limit=limit)
+        try:
+            from agentmind.memory.pipeline.query_understanding import (
+                parse_conversation_history_query,
+            )
+            history_query = parse_conversation_history_query(message)
+        except Exception:
+            history_query = None
+        target_limit = history_query.limit if history_query is not None else limit
+        return await svc.retrieve_context(message, user_id=user_id, limit=target_limit)
 
 
 async def _retrieve_result_set_followup(

@@ -51,17 +51,7 @@ class RoutingPipeline:
             is_retry=is_retry,
         )
 
-        # ── L1: 意图分类 ──
-        from agentmind.routing.classifier.intent import Intent, IntentClassifier
-        intent = IntentClassifier().classify(ctx)
-
-        if intent != Intent.SINGLE_TASK:
-            return RoutingDecision(
-                agent_id="", strategy="unsupported",
-                confidence=0.0, context=ctx,
-            )
-
-        # ── L2: 策略管道 ──
+        # ── L1: 策略管道 ──
         return await self._run_strategies(ctx, settings, is_retry)
 
     async def _run_strategies(
@@ -74,12 +64,15 @@ class RoutingPipeline:
                 continue
             is_last = (i == len(sorted_strategies) - 1)
             if is_last or result.confidence >= self._min_confidence:
+                if result.semantic_intent is not None:
+                    ctx.semantic_intent = result.semantic_intent
                 return RoutingDecision(
                     agent_id=result.agent_id,
                     strategy=result.reason,
                     confidence=result.confidence,
                     fallback_chain=result.alternatives,
                     reply_text=result.reply_text,
+                    semantic_intent=result.semantic_intent,
                     context=ctx,
                 )
 

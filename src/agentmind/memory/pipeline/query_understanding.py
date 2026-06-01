@@ -90,3 +90,51 @@ def _safe_float(v, default: float = 0.0) -> float:
         return float(v)
     except (ValueError, TypeError):
         return default
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ConversationHistoryQuery:
+    intent: str
+    time_range_start: str = ""
+    time_range_end: str = ""
+    current_session: bool = False
+    limit: int = 50
+
+
+def parse_conversation_history_query(
+    message: str,
+    *,
+    now=None,
+    timezone_name: str = "Asia/Shanghai",
+) -> ConversationHistoryQuery | None:
+    text = str(message or "").strip().lower()
+    if not text:
+        return None
+    asks_history = any(
+        token in text
+        for token in ["聊过", "说过", "问过", "做过", "对话", "内容"]
+    )
+    if not asks_history:
+        return None
+
+    current_session = any(
+        token in text
+        for token in ["当前session", "当前 session", "当前会话", "本session", "本会话"]
+    )
+    if current_session:
+        return ConversationHistoryQuery(
+            intent="conversation_history",
+            current_session=True,
+        )
+
+    from agentmind.services.time_service import local_day_bounds
+
+    if "昨天" in text:
+        start, end = local_day_bounds("yesterday", now=now, timezone_name=timezone_name)
+        return ConversationHistoryQuery("conversation_history", start, end, False)
+    if "今天" in text or "今日" in text:
+        start, end = local_day_bounds("today", now=now, timezone_name=timezone_name)
+        return ConversationHistoryQuery("conversation_history", start, end, False)
+    return None

@@ -21,7 +21,7 @@ class FakeDiscussionMemoryService:
 class TestParseDiscussion:
     def test_two_agents_with_topic(self):
         """@agent1 @agent2 讨论：主题 → 正确解析"""
-        from agentmind.api.router import _parse_discussion
+        from agentmind.services.routing_service import _parse_discussion
 
         ex1 = _make_healthy_executor("claude_code", "Claude Code")
         ex2 = _make_healthy_executor("hermes", "Hermes")
@@ -35,7 +35,7 @@ class TestParseDiscussion:
 
     def test_two_agents_trigger_聊聊(self):
         """@a1 @a2 聊聊 → 触发讨论"""
-        from agentmind.api.router import _parse_discussion
+        from agentmind.services.routing_service import _parse_discussion
 
         ex1 = _make_healthy_executor("a1", "A1")
         ex2 = _make_healthy_executor("a2", "A2")
@@ -46,7 +46,7 @@ class TestParseDiscussion:
 
     def test_single_agent_no_discussion(self):
         """单个 @mention 不触发讨论"""
-        from agentmind.api.router import _parse_discussion
+        from agentmind.services.routing_service import _parse_discussion
 
         ex = _make_healthy_executor("a1", "A1")
         reg = _fake_registry({"a1": ex})
@@ -55,7 +55,7 @@ class TestParseDiscussion:
 
     def test_no_discussion_keyword(self):
         """有 @mention 但无讨论关键词 → 不触发"""
-        from agentmind.api.router import _parse_discussion
+        from agentmind.services.routing_service import _parse_discussion
 
         ex1 = _make_healthy_executor("a1", "A1")
         ex2 = _make_healthy_executor("a2", "A2")
@@ -65,7 +65,7 @@ class TestParseDiscussion:
 
     def test_fuzzy_name_resolution(self):
         """@Claude 模糊匹配到 claude_code"""
-        from agentmind.api.router import _resolve_agent_mention
+        from agentmind.services.routing_service import _resolve_agent_mention
 
         ex = _make_healthy_executor("claude_code", "Claude Code")
         reg = _fake_registry({"claude_code": ex})
@@ -74,7 +74,7 @@ class TestParseDiscussion:
 
     def test_topic_preserves_constraints(self):
         """用户附加要求保留在 topic 中"""
-        from agentmind.api.router import _parse_discussion
+        from agentmind.services.routing_service import _parse_discussion
 
         ex1 = _make_healthy_executor("a", "A")
         ex2 = _make_healthy_executor("b", "B")
@@ -90,7 +90,7 @@ class TestParseDiscussion:
 
     def test_topic_without_constraints(self):
         """无附加要求的讨论"""
-        from agentmind.api.router import _parse_discussion
+        from agentmind.services.routing_service import _parse_discussion
 
         ex1 = _make_healthy_executor("a", "A")
         ex2 = _make_healthy_executor("b", "B")
@@ -123,11 +123,11 @@ class TestRouteStream:
         settings = {"routing": {"use_new_pipeline": True}}
 
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_start", AsyncMock())
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_end", AsyncMock())
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_update", AsyncMock())
+            "agentmind.services.routing_service.record_task_update", AsyncMock())
         monkeypatch.setattr(
             "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision", AsyncMock())
         monkeypatch.setattr(
@@ -167,11 +167,11 @@ class TestRouteStream:
         monkeypatch.setattr(
             "agentmind.routing.pipeline.RoutingPipeline.run", _fake_run)
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_start", AsyncMock())
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_end", AsyncMock())
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_update", AsyncMock())
+            "agentmind.services.routing_service.record_task_update", AsyncMock())
         monkeypatch.setattr(
             "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision", AsyncMock())
         monkeypatch.setattr(
@@ -196,9 +196,9 @@ class TestRouteStream:
         settings = {"routing": {"use_new_pipeline": True}}
 
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_start", AsyncMock())
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_update", AsyncMock())
+            "agentmind.services.routing_service.record_task_update", AsyncMock())
 
         chunks = []
         async for chunk in route_stream("hello", "u1", reg, engine, settings):
@@ -230,11 +230,11 @@ class TestRouteStream:
         settings = {"routing": {"use_new_pipeline": True}}
 
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_start", AsyncMock())
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_end", AsyncMock())
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_update", AsyncMock())
+            "agentmind.services.routing_service.record_task_update", AsyncMock())
         monkeypatch.setattr(
             "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision", AsyncMock())
         monkeypatch.setattr(
@@ -249,6 +249,52 @@ class TestRouteStream:
         assert "payloads" not in full_text
         assert "实际回复" in full_text
 
+    @pytest.mark.asyncio
+    async def test_history_query_is_not_handled_by_protocol_router(self, monkeypatch):
+        """历史查询不是协议命令，必须继续进入语义路由 pipeline。"""
+        from agentmind.api.router import route_stream
+        from agentmind.routing.context import RequestIdentity, RoutingContext, RoutingDecision
+
+        ex = _make_healthy_executor("echo_agent", "Echo", tags=["general"])
+        reg = _fake_registry({"echo_agent": ex})
+        engine = _fake_rule_engine()
+        settings = {"routing": {"use_new_pipeline": True}}
+        calls = []
+
+        async def _fake_run(self, msg, identity, settings, is_retry=False):
+            calls.append((msg, identity.user_id))
+            return RoutingDecision(
+                agent_id="agentmind",
+                strategy="semantic_intent",
+                confidence=0.9,
+                reply_text="今天的对话记录",
+                context=RoutingContext(
+                    identity=RequestIdentity(trace_id=identity.trace_id, user_id=identity.user_id),
+                    raw_message=msg,
+                    candidates=["echo_agent"],
+                ),
+            )
+
+        monkeypatch.setattr("agentmind.routing.pipeline.RoutingPipeline.run", _fake_run)
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_update", AsyncMock())
+        monkeypatch.setattr(
+            "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.executors.base.MemoryWriter.write_task",
+            AsyncMock(),
+        )
+
+        chunks = []
+        async for chunk in route_stream("今天都聊过什么内容，帮我总结一下", "u1", reg, engine, settings):
+            chunks.append(chunk)
+
+        assert calls == [("今天都聊过什么内容，帮我总结一下", "u1")]
+        assert any("今天的对话记录" in chunk for chunk in chunks)
+
 
 # ═══════════════════════════════════════
 # 3. _run_discussion 讨论循环
@@ -258,7 +304,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_single_turn_discussion(self, monkeypatch):
         """讨论循环：Agent 轮流发言一轮后停止"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         sent_messages = []
 
@@ -278,9 +325,9 @@ class TestRunDiscussion:
         reg = _fake_registry({"a": ex_a, "b": ex_b})
 
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_start", AsyncMock())
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_end", AsyncMock())
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr(
             "agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
@@ -294,7 +341,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_response_path_in_discussion(self, monkeypatch):
         """讨论中 OpenClaw 返回 JSON → 正确提取文本"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         sent_messages = []
 
@@ -324,9 +372,9 @@ class TestRunDiscussion:
         reg = _fake_registry({"openclaw": ex_a, "hermes": ex_b})
 
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_start", AsyncMock())
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
         monkeypatch.setattr(
-            "agentmind.api.router.record_task_end", AsyncMock())
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr(
             "agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
@@ -340,7 +388,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_topic_with_constraints_in_prompt(self, monkeypatch):
         """用户附带约束（限字/维度）→ 首轮 prompt 包含约束"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         sent_messages = []
         agent_prompts = []
@@ -359,8 +408,8 @@ class TestRunDiscussion:
         ex_b.execute_stream = _fake_stream
         reg = _fake_registry({"a": ex_a, "b": ex_b})
 
-        monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
@@ -378,7 +427,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_topic_with_word_limit_no_default(self, monkeypatch):
         """用户已指定限字 → 不追加系统默认限字"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         agent_prompts = []
 
@@ -396,8 +446,8 @@ class TestRunDiscussion:
         ex_b.execute_stream = _fake_stream
         reg = _fake_registry({"a": ex_a, "b": ex_b})
 
-        monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
@@ -410,7 +460,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_word_limit_applies_to_all_turns(self, monkeypatch):
         """用户指定限50字 → 所有轮次都限50字，不是只首轮"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         agent_prompts = []
 
@@ -431,8 +482,8 @@ class TestRunDiscussion:
         ex_b.execute_stream = _fake_stream
         reg = _fake_registry({"a": ex_a, "b": ex_b})
 
-        monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
@@ -456,7 +507,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_agent_stderr_error_shown(self, monkeypatch):
         """Agent stdout 为空但 stderr 有错误 → 显示错误原因"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         sent_messages = []
 
@@ -473,8 +525,8 @@ class TestRunDiscussion:
         ex_b.execute_stream = _error_stream
         reg = _fake_registry({"codex": ex_a, "hermes": ex_b})
 
-        monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
@@ -487,7 +539,8 @@ class TestRunDiscussion:
     @pytest.mark.asyncio
     async def test_stop_discussion_mid_stream(self, monkeypatch):
         """讨论中喊停 → Agent 流式输出被中断"""
-        from agentmind.api.router import _run_discussion, _session
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
 
         sent_messages = []
 
@@ -504,8 +557,8 @@ class TestRunDiscussion:
         ex_b = _make_healthy_executor("b", "AgentB")
         reg = _fake_registry({"a": ex_a, "b": ex_b})
 
-        monkeypatch.setattr("agentmind.api.router.record_task_start", AsyncMock())
-        monkeypatch.setattr("agentmind.api.router.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
         monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
 
         _session.start_discussion("u1")
@@ -616,3 +669,216 @@ def _fake_rule_engine():
     engine.match = AsyncMock(return_value=None)
     engine.rules = []
     return engine
+
+
+# ═══════════════════════════════════════
+# Phase 8: 飞书路径 strategy_manager 集成
+# ═══════════════════════════════════════
+
+class TestPhase8FeishuStrategyManager:
+    """阶段 8：飞书路径使用 strategy_manager 的测试。"""
+
+    @pytest.mark.asyncio
+    async def test_route_stream_passes_strategy_manager_to_pipeline(self, monkeypatch):
+        """route_stream 将 strategy_manager 传递给 RoutingPipeline。"""
+        from agentmind.api.router import route_stream
+
+        ex = _make_healthy_executor("echo_agent", "Echo", tags=["general"])
+        reg = _fake_registry({"echo_agent": ex})
+        engine = _fake_rule_engine()
+        settings = {"routing": {"use_new_pipeline": True}}
+
+        from agentmind.services.strategy_manager import StrategyManager
+        sm = StrategyManager(reg, engine)
+        sm.set_enabled("semantic_intent", False)
+
+        pipeline_sm_list = []
+
+        class _CapturePipeline:
+            def __init__(self, agent_registry, rule_engine, strategy_manager=None):
+                pipeline_sm_list.append(strategy_manager)
+                self._agent_registry = agent_registry
+                self._rule_engine = rule_engine
+                if strategy_manager is None:
+                    from agentmind.services.strategy_manager import StrategyManager as SM
+                    strategy_manager = SM(agent_registry, rule_engine)
+                self._strategy_manager = strategy_manager
+
+            async def run(self, msg, identity, settings, is_retry=False):
+                from agentmind.routing.context import RoutingDecision, RoutingContext
+                return RoutingDecision(
+                    agent_id="echo_agent", strategy="signal_scoring",
+                    confidence=1.0,
+                    context=RoutingContext(
+                        identity=identity, raw_message=msg,
+                        candidates=["echo_agent"],
+                    ),
+                )
+
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.RoutingPipeline",
+            _CapturePipeline,
+        )
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_start", AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_update", AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock(),
+        )
+
+        chunks = []
+        async for chunk in route_stream(
+            "写代码", "u1", reg, engine, settings,
+            strategy_manager=sm,
+        ):
+            chunks.append(chunk)
+
+        assert len(pipeline_sm_list) == 1, "应该创建 1 个 RoutingPipeline"
+        captured = pipeline_sm_list[0]
+        assert captured is sm, (
+            f"route_stream 必须将 strategy_manager 传给 RoutingPipeline，"
+            f"而不是创建新的默认实例"
+        )
+
+    @pytest.mark.asyncio
+    async def test_route_stream_without_strategy_manager_creates_default(self, monkeypatch):
+        """route_stream 不传 strategy_manager 时创建默认实例（回退兼容）。"""
+        from agentmind.api.router import route_stream
+
+        ex = _make_healthy_executor("echo_agent", "Echo", tags=["general"])
+        reg = _fake_registry({"echo_agent": ex})
+        engine = _fake_rule_engine()
+        settings = {"routing": {"use_new_pipeline": True}}
+
+        pipeline_sm_list = []
+
+        class _CapturePipeline:
+            def __init__(self, agent_registry, rule_engine, strategy_manager=None):
+                pipeline_sm_list.append(strategy_manager)
+                self._agent_registry = agent_registry
+                self._rule_engine = rule_engine
+                if strategy_manager is None:
+                    from agentmind.services.strategy_manager import StrategyManager as SM
+                    strategy_manager = SM(agent_registry, rule_engine)
+                self._strategy_manager = strategy_manager
+
+            async def run(self, msg, identity, settings, is_retry=False):
+                from agentmind.routing.context import RoutingDecision, RoutingContext
+                return RoutingDecision(
+                    agent_id="echo_agent", strategy="signal_scoring",
+                    confidence=1.0,
+                    context=RoutingContext(
+                        identity=identity, raw_message=msg,
+                        candidates=["echo_agent"],
+                    ),
+                )
+
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.RoutingPipeline",
+            _CapturePipeline,
+        )
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_start", AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_update", AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock(),
+        )
+
+        chunks = []
+        async for chunk in route_stream(
+            "写代码", "u1", reg, engine, settings,
+            # 不传 strategy_manager
+        ):
+            chunks.append(chunk)
+
+        assert len(pipeline_sm_list) == 1
+        # 不传时创建默认的 StrategyManager 实例
+        assert pipeline_sm_list[0] is None, (
+            "不传 strategy_manager 时传 None，RoutingPipeline 内部创建默认"
+        )
+
+    @pytest.mark.asyncio
+    async def test_disabled_strategy_affects_feishu_route_stream(self, monkeypatch):
+        """禁用策略影响飞书 route_stream 的路由行为。"""
+        from agentmind.api.router import route_stream
+
+        ex = _make_healthy_executor("echo_agent", "Echo", tags=["general"])
+        reg = _fake_registry({"echo_agent": ex})
+        engine = _fake_rule_engine()
+        settings = {"routing": {"use_new_pipeline": True}}
+
+        from agentmind.services.strategy_manager import StrategyManager
+        sm = StrategyManager(reg, engine)
+        # 禁用 semantic_intent
+        sm.set_enabled("semantic_intent", False)
+
+        enabled_from_pipeline = []
+
+        class _CapturePipeline:
+            def __init__(self, agent_registry, rule_engine, strategy_manager=None):
+                self._agent_registry = agent_registry
+                self._rule_engine = rule_engine
+                if strategy_manager is None:
+                    from agentmind.services.strategy_manager import StrategyManager as SM
+                    strategy_manager = SM(agent_registry, rule_engine)
+                self._strategy_manager = strategy_manager
+
+            async def run(self, msg, identity, settings, is_retry=False):
+                enabled = self._strategy_manager.get_enabled_strategies(settings)
+                for s in enabled:
+                    enabled_from_pipeline.append(type(s).__name__)
+                from agentmind.routing.context import RoutingDecision, RoutingContext
+                return RoutingDecision(
+                    agent_id="echo_agent", strategy="signal_scoring",
+                    confidence=1.0,
+                    context=RoutingContext(
+                        identity=identity, raw_message=msg,
+                        candidates=["echo_agent"],
+                    ),
+                )
+
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.RoutingPipeline",
+            _CapturePipeline,
+        )
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_start", AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_update", AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision",
+            AsyncMock(),
+        )
+        monkeypatch.setattr(
+            "agentmind.routing.executors.base.MemoryWriter.write_task", AsyncMock(),
+        )
+
+        chunks = []
+        async for chunk in route_stream(
+            "写代码", "u1", reg, engine, settings,
+            strategy_manager=sm,
+        ):
+            chunks.append(chunk)
+
+        assert "SemanticIntentStrategy" not in enabled_from_pipeline, (
+            f"semantic_intent 已禁用，不应出现在飞书路径策略列表中: {enabled_from_pipeline}"
+        )
+        assert "SignalScoringStrategy" in enabled_from_pipeline, (
+            "signal_scoring 必须仍然启用"
+        )

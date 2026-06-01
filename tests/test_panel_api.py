@@ -204,9 +204,9 @@ class TestPanelAPI:
                 assert resp.status_code == 200
                 data = resp.json()
                 core = [s["name"] for s in data["strategies"] if s["kind"] == "core"]
-                assert core == ["explicit", "rule_engine", "llm_routing", "signal_scoring"]
-                assert any(
-                    s["name"] == "memory_recall" and s["kind"] == "auxiliary"
+                assert core == ["explicit", "semantic_intent", "signal_scoring"]
+                assert not any(
+                    s["name"] == "memory_recall"
                     for s in data["strategies"]
                 )
             finally:

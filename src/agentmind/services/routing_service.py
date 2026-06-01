@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +18,13 @@ from agentmind.governance import CPE, CPERequest
 from agentmind.memory.service import MemoryService
 from agentmind.orchestration.engine import OrchestrationEngine
 from agentmind.orchestration.models import OrchestrationPlan
-from agentmind.routing.context import RequestIdentity
+from agentmind.routing.context import RequestIdentity, RoutingDecision
+from agentmind.routing.executors.conversation_history import ConversationHistoryExecutor
 from agentmind.routing.executors.self_reply import SelfReplyExecutor
 from agentmind.routing.executors.single_agent import SingleAgentExecutor
 from agentmind.routing.pipeline import RoutingPipeline
+from agentmind.routing.protocol_router import ProtocolRouter
+from agentmind.routing.semantic_intent import SemanticIntentType
 from agentmind.routing.side_effects.session_registry import session_registry as _session
 from agentmind.routing.side_effects.trace_recorder import TraceRecorder
 from agentmind.services.audit_service import AuditService
@@ -28,10 +32,6 @@ from agentmind.services.orchestration_service import OrchestrationService
 from agentmind.storage.db import record_attached_turn, record_task_end, record_task_start, record_task_update
 
 logger = logging.getLogger("agentmind")
-_SENSITIVE_RE = re.compile(
-    r'(sk-[a-zA-Z0-9]{20,}|api_key\s*=\s*[\"\'][^\"\']+|password\s*=\s*[\"\'][^\"\']+)',
-    re.IGNORECASE,
-)
 
 
 class RoutingService:
@@ -86,6 +86,15 @@ async def _record_cpe_routing_dry_run(cpe_request: CPERequest) -> None:
         logger.debug("记录 CPE routing dry-run audit 失败", exc_info=True)
 
 
+def _select_executor(decision: RoutingDecision, agent_registry):
+    intent = decision.semantic_intent.intent if decision.semantic_intent else None
+    if decision.agent_id == "agentmind":
+        if intent == SemanticIntentType.CONVERSATION_HISTORY:
+            return ConversationHistoryExecutor(agent_registry)
+        return SelfReplyExecutor(agent_registry)
+    return SingleAgentExecutor(agent_registry)
+
+
 def register_stream_listener(trace_id: str) -> asyncio.Queue:
     return _session.register_stream_listener(trace_id)
 
@@ -99,14 +108,46 @@ def cleanup_stale_streams(ttl_seconds: int = 600):
 
 
 def _step_security_intercept(msg: str, agent_registry) -> str | None:
-    if not _SENSITIVE_RE.search(msg):
-        return None
-    local_agents = agent_registry.get_healthy_agents_by_security_level("local")
-    if local_agents:
-        logger.info("安全层拦截：检测到敏感信息，降级到本地 Agent %s", local_agents[0])
-        return local_agents[0]
-    logger.warning("检测到敏感信息但无可用本地 Agent，继续正常路由")
+    """安全拦截：检测敏感信息，降级到本地 Agent。
+
+    委托 ProtocolRouter 做确定性的信息检测，不再各自维护正则。
+    """
+    route = ProtocolRouter(agent_registry=agent_registry).match(msg)
+    if route and route.kind == "security_intercept":
+        logger.info("安全层拦截：检测到敏感信息，降级到本地 Agent %s", route.value)
+        return route.value
     return None
+
+
+@dataclass
+class _PipelineResult:
+    trace_id: str
+    decision: RoutingDecision
+
+
+async def _resolve_routing_decision(
+    msg: str,
+    user_id: str,
+    session_id: str,
+    agent_registry,
+    engine,
+    settings: dict,
+    strategy_manager=None,
+    is_retry: bool = False,
+) -> _PipelineResult:
+    """共享的管道执行入口：生成 trace_id、构建 identity、运行路由管道。
+
+    调用方负责 task_record 和 executor 分发，因为 HTTP/通道路径的记录时机和输出格式不同。
+    """
+    trace_id = generate_trace_id()
+    identity = RequestIdentity(
+        trace_id=trace_id,
+        user_id=user_id,
+        session_id=session_id,
+    )
+    pipeline = RoutingPipeline(agent_registry, engine, strategy_manager=strategy_manager)
+    decision = await pipeline.run(msg, identity, settings, is_retry)
+    return _PipelineResult(trace_id=trace_id, decision=decision)
 
 
 async def _handle_attached_command(trace_id: str, route_req: RouteRequest, request: Request):
@@ -196,24 +237,27 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
             if bound_tid:
                 return await _handle_attached_command(bound_tid, route_req, request)
 
-    trace_id = generate_trace_id()
     msg = route_req.message
     app = _get_app(request)
     agent_registry = app.state.agent_registry
     engine = app.state.rule_engine
     settings = getattr(app.state, "settings", None) or {}
 
-    _step_security_intercept(msg, agent_registry)
-    await record_task_start(trace_id, msg)
-    await record_task_update(trace_id, status="routing")
-
-    identity = RequestIdentity(
-        trace_id=trace_id,
+    pipeline_result = await _resolve_routing_decision(
+        msg=msg,
         user_id=route_req.user_id or "",
         session_id=route_req.session_id or "",
+        agent_registry=agent_registry,
+        engine=engine,
+        settings=settings,
+        strategy_manager=getattr(app.state, "strategy_manager", None),
+        is_retry=route_req.is_retry,
     )
-    pipeline = RoutingPipeline(agent_registry, engine)
-    decision = await pipeline.run(msg, identity, settings, route_req.is_retry)
+    trace_id = pipeline_result.trace_id
+    decision = pipeline_result.decision
+
+    await record_task_start(trace_id, msg)
+    await record_task_update(trace_id, status="routing")
 
     if decision is not None:
         await record_task_update(trace_id, status="routing", matched_rule=decision.strategy or "pipeline", routed_agent=decision.agent_id)
@@ -243,10 +287,7 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
                 "trace_id": trace_id,
             })
 
-        if decision.agent_id == "agentmind":
-            executor = SelfReplyExecutor(agent_registry)
-        else:
-            executor = SingleAgentExecutor(agent_registry)
+        executor = _select_executor(decision, agent_registry)
 
         if route_req.stream:
             return EventSourceResponse(executor.run_stream(decision, trace_id, route_req.user_id or ""))
@@ -255,9 +296,7 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
     return JSONResponse(status_code=500, content={"error": "routing failed", "trace_id": trace_id})
 
 
-async def route_stream(msg: str, user_id: str, agent_registry, engine, settings, send_func=None):
-    trace_id = generate_trace_id()
-    start_time = asyncio.get_event_loop().time()
+async def route_stream(msg: str, user_id: str, agent_registry, engine, settings, send_func=None, strategy_manager=None):
     logger.info("route_stream 收到消息: user=%s msg=%s", user_id[:12] if user_id else "-", msg[:60])
     if _is_new_session_cmd(msg) and user_id:
         try:
@@ -285,10 +324,17 @@ async def route_stream(msg: str, user_id: str, agent_registry, engine, settings,
             yield "【AgentMind】\n讨论已启动..."
             return
 
-    use_new = settings.get("routing", {}).get("use_new_pipeline", False) if isinstance(settings, dict) else False
-    identity = RequestIdentity(trace_id=trace_id, user_id=user_id, session_id="")
-    pipeline = RoutingPipeline(agent_registry, engine)
-    decision = await pipeline.run(msg, identity, settings)
+    pipeline_result = await _resolve_routing_decision(
+        msg=msg,
+        user_id=user_id,
+        session_id="",
+        agent_registry=agent_registry,
+        engine=engine,
+        settings=settings,
+        strategy_manager=strategy_manager,
+    )
+    trace_id = pipeline_result.trace_id
+    decision = pipeline_result.decision
 
     await record_task_start(trace_id, msg)
     await record_task_update(trace_id, status="routing", matched_rule=decision.strategy or "pipeline", routed_agent=decision.agent_id)
@@ -299,7 +345,7 @@ async def route_stream(msg: str, user_id: str, agent_registry, engine, settings,
 
     if decision.agent_id == "agentmind":
         yield "【AgentMind】\n"
-        executor = SelfReplyExecutor(agent_registry)
+        executor = _select_executor(decision, agent_registry)
         async for chunk in executor.run_text(decision, trace_id, user_id):
             yield chunk
     else:

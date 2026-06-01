@@ -37,6 +37,23 @@ def test_bootstrapper_builds_app_and_keeps_state_local(tmp_path):
     assert app.state.settings["feishu"]["enabled"] is False
 
 
+def test_bootstrapper_reports_v1_release_version(tmp_path):
+    import tomllib
+
+    data_home = tmp_path / "agentmind-home"
+    config_dir = data_home / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "settings.yaml").write_text("feishu: {enabled: false}\n", encoding="utf-8")
+    (config_dir / "agents.yaml").write_text("agents: []\n", encoding="utf-8")
+    (config_dir / "routes.yaml").write_text("rules: []\n", encoding="utf-8")
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    app = AgentMindBootstrapper(port=8765, data_home=data_home).create_app()
+
+    assert pyproject["project"]["version"] == "1.0.0"
+    assert app.version == "1.0.0"
+
+
 def test_startup_maybe_start_feishu_delegates_to_channel_hub(monkeypatch):
     import asyncio
     import agentmind.startup as startup

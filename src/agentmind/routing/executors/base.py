@@ -23,7 +23,7 @@ class ExecutorBase(ABC):
         self._gateway = ProtocolGateway(agent_registry)
 
     def _build_envelope(self, ctx: RoutingContext) -> str:
-        return PromptEnvelope.build(ctx.raw_message, ctx.memory_context or ctx.memories)
+        return PromptEnvelope.build(ctx.raw_message, ctx.memory_context)
 
     def _find_executor(self, agent_id: str):
         if not agent_id:
@@ -58,6 +58,7 @@ class ExecutorBase(ABC):
         self, trace_id: str, agent_id: str,
         raw_message: str, output: str, user_id: str,
         execution_time_ms: int = 0,
+        source_kind: str = "conversation_turn",
     ):
         await record_task_end(
             trace_id, "completed", agent_id,
@@ -65,7 +66,10 @@ class ExecutorBase(ABC):
         )
         # agentmind 自答不写入任务记忆，避免记忆查询产生自循环
         if agent_id != "agentmind":
-            await MemoryWriter.write_task(trace_id, agent_id, raw_message, output, user_id)
+            await MemoryWriter.write_task(
+                trace_id, agent_id, raw_message, output, user_id,
+                source_kind=source_kind,
+            )
 
     async def _record_failure(
         self, trace_id: str, agent_id: str,

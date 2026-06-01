@@ -16,6 +16,7 @@ class MemoryWriter:
     async def write_task(
         trace_id: str, agent_id: str, user_message: str,
         result: str, user_id: str = "",
+        source_kind: str = "conversation_turn",
     ):
         try:
             summary = (result or "")[:1000]
@@ -29,7 +30,8 @@ class MemoryWriter:
                 "summary": f"[{agent_id}] {summary}",
                 "source_agent": agent_id,
                 "source_task_id": trace_id,
-                "tags": tags,
+                "source_kind": source_kind,
+                "tags": tags + [f"source:{agent_id}", source_kind],
                 "user_id": user_id,
             }, user_id=user_id)
         except Exception:

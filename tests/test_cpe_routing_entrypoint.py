@@ -88,7 +88,7 @@ async def test_route_request_records_cpe_dry_run_without_changing_decision(monke
     calls = []
 
     class FakePipeline:
-        def __init__(self, agent_registry, engine):
+        def __init__(self, agent_registry, engine, strategy_manager=None):
             pass
 
         async def run(self, msg, identity, settings, is_retry=False):

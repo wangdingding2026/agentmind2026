@@ -243,6 +243,27 @@ class MemoryService:
         """获取最近 N 轮 Working Memory（每轮 = user + assistant 一对）。"""
         return self._repository.get_working_memory_sync(user_id, limit=limit)
 
+    # ── 结构化问答轮次 ──
+
+    async def read_conversation_turns(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str = "",
+        time_range_start: str = "",
+        time_range_end: str = "",
+        limit: int = 50,
+        include_history_answers: bool = False,
+    ) -> list[dict]:
+        return await self._repository.read_conversation_turns(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            time_range_start=time_range_start,
+            time_range_end=time_range_end,
+            limit=limit,
+            include_history_answers=include_history_answers,
+        )
+
     # ── 检索上下文 ──
 
     async def retrieve(
@@ -273,6 +294,26 @@ class MemoryService:
                 settings = {}
         mem_cfg = settings.get("memory", {})
         steps = []
+
+        try:
+            from agentmind.memory.pipeline.query_understanding import (
+                parse_conversation_history_query,
+            )
+            from agentmind.services.time_service import get_display_timezone
+
+            history_query = parse_conversation_history_query(
+                message,
+                timezone_name=get_display_timezone(settings),
+            )
+        except Exception:
+            history_query = None
+        if history_query is not None:
+            return await self._retrieve_conversation_history_context(
+                message,
+                user_id=user_id,
+                settings=settings,
+                history_query=history_query,
+            )
 
         core_text = ""
         if user_id:
@@ -372,6 +413,79 @@ class MemoryService:
             truncated=truncated,
         )
 
+    async def _retrieve_conversation_history_context(
+        self,
+        message: str,
+        user_id: str,
+        settings: dict,
+        history_query,
+    ) -> MemoryContext:
+        conversation_id = ""
+        working = []
+        if history_query.current_session:
+            conversation_id = self.get_active_conversation_id(user_id) or ""
+            working = self.get_working_memory(
+                user_id,
+                limit=settings.get("memory", {}).get("working_memory_rounds", 10),
+            )
+            if not conversation_id and not working:
+                return MemoryContext(
+                    assembled_context="",
+                    working_memory=[],
+                    recall_items=[],
+                    steps=["conversation_history"],
+                )
+
+        rows = []
+        if not history_query.current_session or conversation_id:
+            rows = await self._repository.search_cards(
+                query="",
+                user_id=user_id,
+                access_levels=["shared"],
+                source_kinds=["conversation_turn", "task"],
+                conversation_id=conversation_id,
+                time_range_start=history_query.time_range_start,
+                time_range_end=history_query.time_range_end,
+                limit=history_query.limit,
+            )
+        rows = [self._card_row_to_search_dict(row) for row in rows]
+        rows = self._dedupe_memory_rows(rows)
+        rows = self._rank_retrieval_rows(rows)
+        if rows:
+            await self._attach_result_set_metadata(rows, message, user_id)
+
+        assembled_context = ""
+        truncated = False
+        steps = ["conversation_history"]
+        if rows:
+            steps.append("memory_cards")
+        try:
+            from agentmind.memory.pipeline.assembler import ContextAssembler
+
+            core_text = await self._repository.read_core_memory(user_id) if user_id else ""
+            recall = [self._dict_to_search_result(row) for row in rows]
+            assembled = ContextAssembler().assemble(
+                core_text,
+                working,
+                recall,
+                max_bytes=settings.get("memory", {}).get("context_max_bytes", 8192),
+            )
+            assembled_context = assembled.full_text
+            truncated = assembled.truncated
+            if assembled_context:
+                steps.append("context_assembler")
+        except Exception:
+            pass
+
+        return MemoryContext(
+            assembled_context=assembled_context,
+            working_memory=working,
+            recall_items=rows[:history_query.limit],
+            result_set_id=rows[0].get("_result_set_id", "") if rows else "",
+            steps=steps,
+            truncated=truncated,
+        )
+
     @staticmethod
     def _dedupe_memory_rows(rows: list[dict]) -> list[dict]:
         seen = set()
@@ -391,9 +505,20 @@ class MemoryService:
                 score = float(row.get("_score") or 0.0)
             except (TypeError, ValueError):
                 score = 0.0
-            return (-score, row.get("created_at", ""), row.get("memory_id", ""))
+            return (
+                -score,
+                MemoryService._created_at_desc_sort_value(row.get("created_at", "")),
+                row.get("memory_id", ""),
+            )
 
         return sorted(rows, key=sort_key)
+
+    @staticmethod
+    def _created_at_desc_sort_value(created_at: str) -> int:
+        digits = "".join(ch for ch in str(created_at or "") if ch.isdigit())[:14]
+        if not digits:
+            return 0
+        return -int(digits.ljust(14, "0"))
 
     async def _rerank_rows(
         self, message: str, rows: list[dict], mem_cfg: dict

@@ -49,6 +49,7 @@ def ensure_canonical_tables(conn) -> None:
             source_refs TEXT NOT NULL DEFAULT '{}',
             score_metadata TEXT NOT NULL DEFAULT '{}',
             session_id TEXT NOT NULL DEFAULT '',
+            source_kind TEXT NOT NULL DEFAULT 'task',
             created_at TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL DEFAULT ''
         );
@@ -131,6 +132,7 @@ def ensure_canonical_tables(conn) -> None:
         ("source_refs", "TEXT NOT NULL DEFAULT '{}'"),
         ("score_metadata", "TEXT NOT NULL DEFAULT '{}'"),
         ("session_id", "TEXT NOT NULL DEFAULT ''"),
+        ("source_kind", "TEXT NOT NULL DEFAULT 'task'"),
     ])
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_raw_memory_user_created ON raw_memory(user_id, created_at DESC)",
@@ -139,6 +141,7 @@ def ensure_canonical_tables(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_raw ON memory_cards(raw_memory_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_conversation ON memory_cards(conversation_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_session ON memory_cards(session_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_cards_source_kind ON memory_cards(source_kind, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_type_importance ON memory_cards(memory_type, importance DESC)",
         "CREATE INDEX IF NOT EXISTS idx_working_memory_user_id ON working_memory(user_id, id)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON sessions(user_id, status)",

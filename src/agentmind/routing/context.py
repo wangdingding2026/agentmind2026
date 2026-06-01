@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from agentmind.memory.dto import MemoryContext
+from agentmind.routing.semantic_intent import SemanticIntent
 
 
 @dataclass
@@ -17,6 +18,7 @@ class RoutingContext:
     candidates: list[str] = field(default_factory=list)
     memories: list[dict] = field(default_factory=list)
     memory_context: MemoryContext | None = None
+    semantic_intent: SemanticIntent | None = None
     security_flagged: bool = False
     is_retry: bool = False
 
@@ -28,4 +30,5 @@ class RoutingDecision:
     confidence: float = 0.0
     fallback_chain: list[str] = field(default_factory=list)
     reply_text: str = ""
+    semantic_intent: SemanticIntent | None = None
     context: RoutingContext | None = None

@@ -2,6 +2,13 @@ from agentmind.services.task_service import TaskService
 
 
 class SessionRuntimeService:
+    """运行时状态持久化服务。
+
+    通过 SessionRuntimeStore (SQLite) 持久化 discussion 和 attach 绑定状态，
+    每次状态变更即时写入，启动时通过 restore_runtime_state() 恢复。
+    流监听 (asyncio.Queue) 不可序列化，重启后无法恢复。
+    """
+
     def __init__(
         self,
         session_registry=None,

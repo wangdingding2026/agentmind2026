@@ -2,31 +2,22 @@ from agentmind.memory.dto import MemoryContext
 
 
 class PromptEnvelope:
-    """将 L0 MemoryRetriever 产出的记忆列表拼接为 Agent 最终 prompt。
+    """将 MemoryContext.assembled_context 包装为 Agent 最终 prompt。
 
-    纯函数，无副作用，无 IO。逻辑来自 router.py:_inject_context 的后半段。
+    纯函数，无副作用，无 IO。assembled_context 由 ContextAssembler 统一生成，
+    PromptEnvelope 仅负责追加当前指令字符串。
+
+    兼容旧调用方传入 list[dict] 的情况——直接返回原始消息，不做格式化。
     """
 
     @staticmethod
     def build(raw_message: str, memory_context: MemoryContext | list[dict] | None) -> str:
-        if not memory_context:
+        if memory_context is None:
             return raw_message
-
-        if isinstance(memory_context, MemoryContext):
-            if memory_context.assembled_context:
-                return memory_context.assembled_context + "\n\n当前指令：" + raw_message
-            memories = memory_context.recall_items
-        else:
-            memories = memory_context
-
-        parts = []
-        for m in memories:
-            content = (m.get("content") or "")[:300]
-            summary = (m.get("summary") or "")[:1000]
-            parts.append(f"用户问「{content}」→ {summary}")
-
-        return (
-            "[系统注入：历史对话上下文，请据此理解当前指令]\n"
-            + "\n".join(parts)
-            + "\n\n当前指令：" + raw_message
-        )
+        if isinstance(memory_context, list):
+            # 兼容旧调用方（已由 MemoryRetriever → ContextAssembler 统一格式化，
+            # 不再在此处拼装 prompt）
+            return raw_message
+        if memory_context.assembled_context:
+            return memory_context.assembled_context + "\n\n当前指令：" + raw_message
+        return raw_message

@@ -38,9 +38,12 @@ class WritePipeline:
         if not entry.memory_type or entry.memory_type == MemoryType.EPISODIC:
             entry.memory_type = self._classify_type(content)
 
-        # 2. simhash dedup
+        # 2. simhash dedup — 用 content + summary 联合计算，相同问题不同回答不会误杀
         hasher = ContentHasher()
-        entry.content_hash = str(hasher.simhash(content))
+        combined = content
+        if entry.summary:
+            combined = f"{content}\n{entry.summary}"
+        entry.content_hash = str(hasher.simhash(combined))
         if await self._dedup_check(entry):
             logger.debug("dedup 命中，跳过写入: %s", entry.memory_id)
             return []
@@ -72,6 +75,7 @@ class WritePipeline:
                     summary=entry.summary[:1000],
                     source_agent=entry.source_agent,
                     source_task_id=entry.source_task_id,
+                    source_kind=entry.source_kind,
                     user_id=entry.user_id,
                     memory_type=entry.memory_type,
                     conversation_id=entry.conversation_id,
@@ -105,6 +109,7 @@ class WritePipeline:
             user_id=entry.user_id,
             source_agent=entry.source_agent,
             source_task_id=entry.source_task_id,
+            source_kind=entry.source_kind,
             session_id=entry.conversation_id,
             conversation_id=entry.conversation_id,
             tags=entry.tags,
@@ -128,31 +133,53 @@ class WritePipeline:
         return MemoryType.EPISODIC
 
     async def _dedup_check(self, entry: MemoryEntry) -> bool:
-        """检查是否已存在相似记忆。"""
+        """基于 simhash 汉明距离检查是否已存在相似记忆。
+
+        与 Assembler._dedup_by_hash 对齐：使用 content_hash（联合 content+summary）
+        做汉明距离比较，替代不可靠的子串匹配。
+        """
+        if not entry.content_hash:
+            return False
         try:
+            from agentmind.memory.components.content_hasher import ContentHasher
+
             results = await self._repository.search_cards(
                 query=entry.content[:200],
                 user_id=entry.user_id,
                 limit=5,
             )
             for r in results:
-                card_text = r.get("card_text") or r.get("summary") or ""
-                if entry.content and entry.content.strip() in card_text:
-                    return True
+                score_meta = r.get("score_metadata") or {}
+                if isinstance(score_meta, str):
+                    import json as _json
+                    try:
+                        score_meta = _json.loads(score_meta)
+                    except (_json.JSONDecodeError, TypeError):
+                        score_meta = {}
+                existing_hash_str = score_meta.get("content_hash", "")
+                if existing_hash_str:
+                    try:
+                        if ContentHasher.is_similar(
+                            int(entry.content_hash), int(existing_hash_str), threshold=3,
+                        ):
+                            return True
+                    except (ValueError, TypeError):
+                        pass
         except Exception:
             pass
         return False
 
     async def _async_enrich(self, entry: MemoryEntry, content: str, created_ids: list[str]):
         """异步富化：embedding 生成 + 关系抽取 + Core Memory 候选检测。"""
-        # 7. embedding 生成
-        try:
-            emb = await MemoryEmbeddingProvider().generate_embedding(content)
-            if emb and is_vec_available():
-                blob = embedding_to_blob(emb)
-                await self._repository.write_vector_embedding(created_ids, blob)
-        except Exception as e:
-            logger.debug("异步 embedding 失败: %s", e)
+        # 7. embedding 生成（仅当向量存储可用时）
+        if is_vec_available():
+            try:
+                emb = await MemoryEmbeddingProvider().generate_embedding(content)
+                if emb:
+                    blob = embedding_to_blob(emb)
+                    await self._repository.write_vector_embedding(created_ids, blob)
+            except Exception as e:
+                logger.debug("异步 embedding 失败: %s", e)
 
         # 8. 关系抽取
         try:

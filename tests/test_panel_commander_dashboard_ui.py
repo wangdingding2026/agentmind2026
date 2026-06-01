@@ -17,7 +17,7 @@ REQUIRED_PAGES = {
     "audit": "审计台",
     "memory": "记忆台",
     "orchestrator": "编排台",
-    "settings": "配置",
+    "settings": "配置项",
 }
 
 
@@ -86,7 +86,7 @@ def test_panel_commander_dashboard_localizes_user_visible_status_codes():
         "审计工作台",
         "记忆工作台",
         "编排工作台",
-        "系统配置",
+        "系统配置项",
         "任务详情",
     ]:
         assert text in html

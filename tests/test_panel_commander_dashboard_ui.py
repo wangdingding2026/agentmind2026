@@ -169,6 +169,51 @@ def test_panel_settings_page_lays_out_fields_across_each_panel():
     assert "padding-left: 0;" in settings_actions.group("body")
 
 
+def test_panel_settings_page_aligns_actions_and_places_notes_at_card_bottom():
+    html = _read(PANEL_HTML)
+    css = _read(PANEL_CSS)
+
+    assert "<button class=\"btn-primary\" type=\"button\" data-action=\"save-retention-settings\">保存保留设置</button>" not in html
+    assert '<button class="btn-primary" id="btn-save-retention-settings" type="button" data-action="save-retention-settings">保存</button>' in html
+
+    for section_id, note_id in {
+        "settings-feishu-section": "feishu-save-msg",
+        "settings-embedding-section": "embedding-status-line",
+        "settings-retention-section": "settings-save-msg",
+    }.items():
+        section = re.search(
+            rf'<section class="settings-section" id="{section_id}">(?P<body>.*?)</section>',
+            html,
+            re.S,
+        )
+        assert section is not None
+        body = section.group("body")
+        assert f'id="{note_id}"' in body
+        actions = re.search(r'<div class="settings-actions">(?P<body>.*?)</div>', body, re.S)
+        assert actions is not None
+        assert note_id not in actions.group("body")
+        assert body.rfind('class="settings-note"') > body.rfind('class="settings-form')
+
+    settings_grid_matches = re.findall(r"\.settings-grid \{(?P<body>.*?)\n\}", css, re.S)
+    assert settings_grid_matches
+    assert "align-items: stretch;" in settings_grid_matches[-1]
+
+    settings_section = re.search(r"\.settings-section \{(?P<body>.*?)\n\}", css, re.S)
+    assert settings_section is not None
+    assert "width: 100%;" in settings_section.group("body")
+
+    settings_actions = re.search(r"\.settings-actions \{(?P<body>.*?)\n\}", css, re.S)
+    assert settings_actions is not None
+    assert "margin-left: auto;" in settings_actions.group("body")
+    assert "justify-content: flex-end;" in settings_actions.group("body")
+
+    settings_note = re.search(r"\.settings-note \{(?P<body>.*?)\n\}", css, re.S)
+    assert settings_note is not None
+    assert "font-size: 0.76rem;" in settings_note.group("body")
+    assert "color: var(--muted);" in settings_note.group("body")
+    assert ".settings-note:empty" in css
+
+
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():
     js = _read(PANEL_JS)
 

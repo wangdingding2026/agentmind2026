@@ -234,7 +234,6 @@
           <p class="eyebrow">系统配置</p>
           <h1>配置</h1>
         </div>
-        <button class="btn-primary" type="button" data-action="save-retention-settings">保存保留设置</button>
       </header>
       <div class="settings-grid">
         <section class="settings-section" id="settings-feishu-section">
@@ -244,9 +243,9 @@
             <label class="settings-row"><span>应用密钥</span><input id="feishu-app-secret" type="password" placeholder="密钥"></label>
             <div class="settings-actions">
               <button class="btn-primary" id="btn-feishu-toggle" type="button" data-action="toggle-feishu">未连接</button>
-              <span class="form-message" id="feishu-save-msg"></span>
             </div>
           </div>
+          <div class="settings-note"><span class="form-message" id="feishu-save-msg"></span></div>
         </section>
         <section class="settings-section" id="settings-semantic-section">
           <div class="settings-section-title">语义路由</div>
@@ -267,9 +266,9 @@
             <label class="settings-row"><span>模型</span><input id="setting-emb-model" type="text" placeholder="text-embedding-3-small"></label>
             <div class="settings-actions">
               <button class="btn-primary" id="btn-emb-toggle" type="button" data-action="toggle-embedding">已禁用</button>
-              <p class="muted" id="embedding-status-line"></p>
             </div>
           </div>
+          <p class="settings-note" id="embedding-status-line"></p>
         </section>
         <section class="settings-section" id="settings-core-llm-section">
           <div class="settings-section-title">Core LLM</div>
@@ -289,9 +288,10 @@
             <label class="settings-row"><span>任务条数上限</span><input id="setting-history-max-entries" type="number" placeholder="10000"></label>
             <label class="settings-row"><span>任务最少保留天数</span><input id="setting-history-retention-days" type="number" placeholder="30"></label>
             <div class="settings-actions">
-              <span class="form-message" id="settings-save-msg"></span>
+              <button class="btn-primary" id="btn-save-retention-settings" type="button" data-action="save-retention-settings">保存</button>
             </div>
           </div>
+          <div class="settings-note"><span class="form-message" id="settings-save-msg"></span></div>
         </section>
       </div>
     </section>

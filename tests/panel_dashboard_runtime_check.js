@@ -169,7 +169,14 @@ const fixtures = {
       agent_id: 'a1',
       risk_level: 'low',
       trace_id: 't1',
-      payload: { area: 'settings', data: { embedding: { enabled: true } } },
+      payload: {
+        area: 'settings',
+        changed_keys: ['embedding'],
+        data: {
+          feishu: { enabled: true },
+          embedding: { enabled: true },
+        },
+      },
     }],
   },
   '/memory/search?q=&user_id=&limit=30': {

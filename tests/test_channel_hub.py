@@ -52,6 +52,7 @@ class _ConfigService:
 
     def update_settings_sections(self, sections):
         self.updated.append(sections)
+        self.settings.update(sections)
 
     def read_settings(self):
         return self.settings
@@ -201,8 +202,11 @@ async def test_channel_hub_disconnects_feishu_and_disables_config():
     assert result == {"ok": True}
     assert adapter.stopped == 1
     assert app.state.feishu_adapter is None
+    assert config_service.updated == [{
+        "feishu": {"enabled": False, "app_id": "app", "app_secret": "secret"}
+    }]
     assert config_service.settings["feishu"]["enabled"] is False
-    assert config_service.written == [config_service.settings]
+    assert config_service.written == []
 
 
 def test_channel_hub_reports_feishu_status():

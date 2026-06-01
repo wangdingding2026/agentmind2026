@@ -193,8 +193,9 @@ class ChannelHub:
         service = self._get_config_service()
         data = service.read_settings()
         if isinstance(data, dict) and "feishu" in data:
-            data["feishu"]["enabled"] = False
-            service.write_settings(data)
+            feishu_config = dict(data["feishu"])
+            feishu_config["enabled"] = False
+            service.update_settings_sections({"feishu": feishu_config})
         return {"ok": True}
 
     def feishu_status(self, app: Any) -> dict[str, bool]:

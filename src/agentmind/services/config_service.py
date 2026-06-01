@@ -71,7 +71,7 @@ class ConfigService:
         if not isinstance(data, dict):
             raise ValueError("settings must be a dict")
         saved = self._write_yaml(self.settings_path, data)
-        self._record_config_audit("settings", saved)
+        self._record_config_audit("settings", saved, changed_keys=list(saved.keys()))
         return saved
 
     def update_settings_sections(self, sections: dict[str, Any]) -> dict[str, Any]:
@@ -81,7 +81,7 @@ class ConfigService:
             data = self.read_settings()
             data.update(sections)
             saved = self._write_yaml(self.settings_path, data)
-            self._record_config_audit("settings", sections)
+            self._record_config_audit("settings", sections, changed_keys=list(sections.keys()))
             return saved
 
     def write_agents(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -148,7 +148,13 @@ class ConfigService:
             )
             return data
 
-    def _record_config_audit(self, area: str, data: dict[str, Any]) -> None:
+    def _record_config_audit(
+        self,
+        area: str,
+        data: dict[str, Any],
+        *,
+        changed_keys: list[str] | None = None,
+    ) -> None:
         try:
             audit_service = self.audit_service
             if audit_service is None:
@@ -164,6 +170,7 @@ class ConfigService:
                 message=f"config update: {area}",
                 payload={
                     "area": area,
+                    "changed_keys": changed_keys or list(data.keys()),
                     "data": self.mask_sensitive(data),
                 },
             )

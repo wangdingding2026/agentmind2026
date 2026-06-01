@@ -83,9 +83,38 @@ def test_config_service_audits_settings_updates_with_masked_payload(tmp_path):
         "message": "config update: settings",
         "payload": {
             "area": "settings",
+            "changed_keys": ["feishu"],
             "data": {"feishu": {"app_id": "app", "app_secret": "****"}},
         },
     }]
+
+
+def test_config_service_audits_only_changed_settings_sections(tmp_path):
+    calls = []
+
+    class FakeAuditService:
+        def _record_event_sync(self, **kwargs):
+            calls.append(kwargs)
+            return "audit-1"
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "settings.yaml").write_text(
+        yaml.dump({
+            "feishu": {"enabled": True, "app_id": "cli", "app_secret": "secret"},
+            "embedding": {"enabled": False},
+        }),
+        encoding="utf-8",
+    )
+    service = ConfigService(config_dir, audit_service=FakeAuditService())
+
+    service.update_settings_sections({"embedding": {"enabled": True}})
+
+    assert calls[0]["payload"] == {
+        "area": "settings",
+        "changed_keys": ["embedding"],
+        "data": {"embedding": {"enabled": True}},
+    }
 
 
 def test_config_service_audits_route_writes(tmp_path):
@@ -105,6 +134,7 @@ def test_config_service_audits_route_writes(tmp_path):
     assert calls[0]["message"] == "config update: routes"
     assert calls[0]["payload"] == {
         "area": "routes",
+        "changed_keys": ["rules"],
         "data": {"rules": [{"name": "r1"}]},
     }
 

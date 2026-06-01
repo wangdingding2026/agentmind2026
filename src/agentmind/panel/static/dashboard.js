@@ -185,29 +185,29 @@ function formatAuditObject(event) {
   const payload = (event && event.payload) || {};
   const area = payload.area || '';
   const data = payload.data || {};
+  const changedKeys = Array.isArray(payload.changed_keys) ? payload.changed_keys : [];
 
   if (area === 'routes') return '路由规则';
   if (area === 'agents') return 'Agent 配置';
   if (area === 'orchestrations') return '编排计划';
-  if (area === 'settings') return formatSettingsAuditObject(data);
+  if (area === 'settings') return formatSettingsAuditObject(changedKeys.length ? changedKeys : Object.keys(data || {}));
   if (event && event.agent_id) return event.agent_id;
   if (payload.component === 'CPE') return '上下文策略引擎';
   if (event && event.trace_id) return event.trace_id;
   return '-';
 }
 
-function formatSettingsAuditObject(data) {
-  const labels = [
-    ['feishu', '飞书通道配置'],
-    ['embedding', 'Embedding 配置'],
-    ['semantic_router', '语义路由配置'],
-    ['meta', 'Core LLM 配置'],
-    ['memory', '记忆保留配置'],
-    ['history', '任务保留配置'],
-  ];
-  const matched = labels
-    .filter(([key]) => Object.prototype.hasOwnProperty.call(data || {}, key))
-    .map(([, label]) => label);
+function formatSettingsAuditObject(keys) {
+  const labels = {
+    feishu: '飞书通道配置',
+    embedding: 'Embedding 配置',
+    semantic_router: '语义路由配置',
+    meta: 'Core LLM 配置',
+    core_llm: 'Core LLM 配置',
+    memory: '记忆保留配置',
+    history: '任务保留配置',
+  };
+  const matched = (keys || []).map(key => labels[key] || key).filter(Boolean);
   return matched.join('、') || '未识别配置项';
 }
 

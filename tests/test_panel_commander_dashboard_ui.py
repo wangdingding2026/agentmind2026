@@ -139,3 +139,27 @@ def test_panel_commander_dashboard_setting_toggles_update_only_after_success():
             and "if (ok)" not in line
         ]
         assert unconditional_updates == []
+
+
+def test_panel_commander_dashboard_all_actions_have_handlers():
+    html = _read(PANEL_HTML)
+    js = _read(PANEL_JS)
+
+    html_actions = set(re.findall(r'data-action="([^"]+)"', html))
+    dynamic_actions = {
+        "open-task-detail",
+        "test-agent",
+        "restart-agent",
+        "edit-agent-tags",
+        "toggle-agent",
+        "delete-route-rule",
+        "delete-memory",
+        "delete-orchestration",
+    }
+    missing = sorted(
+        action
+        for action in html_actions | dynamic_actions
+        if f"'{action}':" not in js
+    )
+
+    assert missing == []

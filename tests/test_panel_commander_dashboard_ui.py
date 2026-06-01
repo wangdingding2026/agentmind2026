@@ -214,6 +214,33 @@ def test_panel_settings_page_aligns_actions_and_places_notes_at_card_bottom():
     assert ".settings-note:empty" in css
 
 
+def test_panel_settings_retention_action_stays_on_field_row():
+    html = _read(PANEL_HTML)
+    css = _read(PANEL_CSS)
+
+    section = re.search(
+        r'<section class="settings-section" id="settings-retention-section">(?P<body>.*?)</section>',
+        html,
+        re.S,
+    )
+    assert section is not None
+    body = section.group("body")
+    assert 'class="settings-form settings-form-wide settings-retention-form"' in body
+
+    retention_form = re.search(r"\.settings-retention-form \{(?P<body>.*?)\n\}", css, re.S)
+    assert retention_form is not None
+    assert "flex-wrap: nowrap;" in retention_form.group("body")
+
+    retention_input = re.search(
+        r"\.settings-retention-form \.settings-row input \{(?P<body>.*?)\n\}",
+        css,
+        re.S,
+    )
+    assert retention_input is not None
+    assert "width: clamp(96px, 9vw, 140px);" in retention_input.group("body")
+    assert ".settings-retention-form { flex-wrap: wrap; }" in css
+
+
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():
     js = _read(PANEL_JS)
 

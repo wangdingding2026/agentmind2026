@@ -244,6 +244,12 @@ input, select {
   width: clamp(150px, 18vw, 260px);
   min-width: 0;
 }
+.settings-retention-form {
+  flex-wrap: nowrap;
+}
+.settings-retention-form .settings-row input {
+  width: clamp(96px, 9vw, 140px);
+}
 .settings-actions {
   display: flex;
   align-items: center;
@@ -386,5 +392,7 @@ button { font: inherit; }
   .settings-form { align-items: stretch; }
   .settings-grid .settings-row { width: 100%; }
   .settings-grid .settings-row input { width: 100%; }
+  .settings-retention-form { flex-wrap: wrap; }
+  .settings-retention-form .settings-row input { width: 100%; }
   .settings-actions { width: 100%; margin-left: 0; justify-content: flex-end; }
 }

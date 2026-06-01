@@ -139,10 +139,22 @@ def test_panel_settings_page_uses_horizontal_form_rows():
     assert 'class="settings-form"' in html
     assert html.count('class="settings-row"') >= 14
     assert ".settings-grid .settings-row" in css
-    assert "grid-template-columns: 108px minmax(0, 1fr)" in css
+    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
     assert ".settings-actions" in css
     assert ".settings-grid label { padding:" not in css
     assert ".settings-grid label {\n  display: flex;\n  flex-direction: column;" not in css
+
+
+def test_panel_settings_page_lays_out_fields_across_each_panel():
+    css = _read(PANEL_CSS)
+
+    assert ".settings-grid {\n  display: flex;" in css
+    assert ".settings-form {\n  display: grid;" in css
+    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
+    assert ".settings-grid .settings-row {\n  display: flex;" in css
+    settings_actions = re.search(r"\.settings-actions \{(?P<body>.*?)\n\}", css, re.S)
+    assert settings_actions is not None
+    assert "padding-left: 0;" in settings_actions.group("body")
 
 
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():

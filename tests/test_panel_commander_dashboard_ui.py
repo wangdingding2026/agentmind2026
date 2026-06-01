@@ -132,6 +132,18 @@ def test_panel_audit_workbench_shows_specific_object_column():
     assert "系统设置" not in js
 
 
+def test_panel_settings_page_uses_horizontal_form_rows():
+    html = _read(PANEL_HTML)
+    css = _read(PANEL_CSS)
+
+    assert 'class="settings-form"' in html
+    assert html.count('class="settings-row"') >= 14
+    assert ".settings-row" in css
+    assert "grid-template-columns: 108px minmax(0, 1fr)" in css
+    assert ".settings-actions" in css
+    assert ".settings-grid label { padding:" not in css
+
+
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():
     js = _read(PANEL_JS)
 

@@ -239,40 +239,58 @@
       <div class="settings-grid">
         <section class="panel">
           <div class="panel-head"><h2>飞书通道</h2></div>
-          <label>应用 ID <input id="feishu-app-id" type="text" placeholder="cli_xxx"></label>
-          <label>应用密钥 <input id="feishu-app-secret" type="password" placeholder="密钥"></label>
-          <button class="btn-primary" id="btn-feishu-toggle" type="button" data-action="toggle-feishu">未连接</button>
-          <span class="form-message" id="feishu-save-msg"></span>
+          <div class="settings-form">
+            <label class="settings-row"><span>应用 ID</span><input id="feishu-app-id" type="text" placeholder="cli_xxx"></label>
+            <label class="settings-row"><span>应用密钥</span><input id="feishu-app-secret" type="password" placeholder="密钥"></label>
+            <div class="settings-actions">
+              <button class="btn-primary" id="btn-feishu-toggle" type="button" data-action="toggle-feishu">未连接</button>
+              <span class="form-message" id="feishu-save-msg"></span>
+            </div>
+          </div>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>语义路由</h2></div>
-          <label>接口地址 <input id="setting-sr-endpoint" type="text"></label>
-          <label>密钥 <input id="setting-sr-key" type="password"></label>
-          <label>模型 <input id="setting-sr-model" type="text"></label>
-          <button class="btn-primary" id="btn-sr-toggle" type="button" data-action="toggle-semantic">已禁用</button>
+          <div class="settings-form">
+            <label class="settings-row"><span>接口地址</span><input id="setting-sr-endpoint" type="text"></label>
+            <label class="settings-row"><span>密钥</span><input id="setting-sr-key" type="password"></label>
+            <label class="settings-row"><span>模型</span><input id="setting-sr-model" type="text"></label>
+            <div class="settings-actions">
+              <button class="btn-primary" id="btn-sr-toggle" type="button" data-action="toggle-semantic">已禁用</button>
+            </div>
+          </div>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>Embedding</h2></div>
-          <label>接口地址 <input id="setting-emb-endpoint" type="text"></label>
-          <label>密钥 <input id="setting-emb-key" type="password"></label>
-          <label>模型 <input id="setting-emb-model" type="text" placeholder="text-embedding-3-small"></label>
-          <button class="btn-primary" id="btn-emb-toggle" type="button" data-action="toggle-embedding">已禁用</button>
-          <p class="muted" id="embedding-status-line"></p>
+          <div class="settings-form">
+            <label class="settings-row"><span>接口地址</span><input id="setting-emb-endpoint" type="text"></label>
+            <label class="settings-row"><span>密钥</span><input id="setting-emb-key" type="password"></label>
+            <label class="settings-row"><span>模型</span><input id="setting-emb-model" type="text" placeholder="text-embedding-3-small"></label>
+            <div class="settings-actions">
+              <button class="btn-primary" id="btn-emb-toggle" type="button" data-action="toggle-embedding">已禁用</button>
+              <p class="muted" id="embedding-status-line"></p>
+            </div>
+          </div>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>Core LLM</h2></div>
-          <label>接口地址 <input id="setting-core-llm-endpoint" type="text"></label>
-          <label>密钥 <input id="setting-core-llm-key" type="password"></label>
-          <label>模型 <input id="setting-core-llm-model" type="text"></label>
-          <button class="btn-primary" id="btn-core-llm-toggle" type="button" data-action="toggle-core-llm">已禁用</button>
+          <div class="settings-form">
+            <label class="settings-row"><span>接口地址</span><input id="setting-core-llm-endpoint" type="text"></label>
+            <label class="settings-row"><span>密钥</span><input id="setting-core-llm-key" type="password"></label>
+            <label class="settings-row"><span>模型</span><input id="setting-core-llm-model" type="text"></label>
+            <div class="settings-actions">
+              <button class="btn-primary" id="btn-core-llm-toggle" type="button" data-action="toggle-core-llm">已禁用</button>
+            </div>
+          </div>
         </section>
         <section class="panel panel-span-2">
           <div class="panel-head"><h2>数据保留</h2></div>
-          <div class="form-grid compact">
-            <label>记忆条数上限 <input id="setting-max-entries" type="number" placeholder="10000"></label>
-            <label>任务条数上限 <input id="setting-history-max-entries" type="number" placeholder="10000"></label>
-            <label>任务最少保留天数 <input id="setting-history-retention-days" type="number" placeholder="30"></label>
-            <span class="form-message" id="settings-save-msg"></span>
+          <div class="settings-form settings-form-wide">
+            <label class="settings-row"><span>记忆条数上限</span><input id="setting-max-entries" type="number" placeholder="10000"></label>
+            <label class="settings-row"><span>任务条数上限</span><input id="setting-history-max-entries" type="number" placeholder="10000"></label>
+            <label class="settings-row"><span>任务最少保留天数</span><input id="setting-history-retention-days" type="number" placeholder="30"></label>
+            <div class="settings-actions">
+              <span class="form-message" id="settings-save-msg"></span>
+            </div>
           </div>
         </section>
       </div>

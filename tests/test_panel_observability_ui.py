@@ -3,6 +3,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PANEL_HTML = PROJECT_ROOT / "src" / "agentmind" / "panel" / "static" / "index.html"
+PANEL_JS = PROJECT_ROOT / "src" / "agentmind" / "panel" / "static" / "dashboard.js"
 READINESS_DOC = (
     PROJECT_ROOT / "docs" / "observability" / "observability-ui-readiness.md"
 )
@@ -16,7 +17,7 @@ REQUIRED_UI_MARKERS = {
     "renderTaskReplay(",
     "formatReplayEvent(",
     "btn-task-replay",
-    "/tasks/' + encodeURIComponent(traceId) + '/replay?limit=50",
+    '"/tasks/" + encodeURIComponent(traceId) + "/replay?limit=50"',
     "任务回放",
     "未找到持久化任务事件",
     "partial_output",
@@ -37,15 +38,21 @@ def _panel_html() -> str:
     return PANEL_HTML.read_text(encoding="utf-8")
 
 
-def test_panel_observability_ui_static_page_contains_replay_view():
+def _panel_static_text() -> str:
     html = _panel_html()
+    js = PANEL_JS.read_text(encoding="utf-8") if PANEL_JS.exists() else ""
+    return html + "\n" + js
+
+
+def test_panel_observability_ui_static_page_contains_replay_view():
+    html = _panel_static_text()
     missing = sorted(marker for marker in REQUIRED_UI_MARKERS if marker not in html)
 
     assert missing == []
 
 
 def test_panel_observability_ui_does_not_bypass_replay_adapter_boundary():
-    html = _panel_html()
+    html = _panel_static_text()
     forbidden = sorted(marker for marker in FORBIDDEN_UI_MARKERS if marker in html)
 
     assert forbidden == []

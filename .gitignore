@@ -12,6 +12,7 @@ venv/
 .idea/
 .vscode/
 .claude/
+.superpowers/
 *.swp
 *.swo
 *~

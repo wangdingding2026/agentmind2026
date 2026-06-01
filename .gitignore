@@ -21,6 +21,7 @@ venv/
 
 # Internal planning documents (published in docs/ instead)
 AGENTMIND_*.md
+agentmind_roadmap.md
 docs/superpowers/plans/
 skills-lock.json
 gen_doc.py

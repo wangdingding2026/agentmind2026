@@ -70,9 +70,87 @@ function statusBadge(status) {
     timeout: '超时',
     healthy: '健康',
     unhealthy: '异常',
+    degraded: '部分异常',
+    unknown: '未知',
   };
   const safe = escapeHtml(status || 'unknown');
   return '<span class="status ' + safe + '">' + escapeHtml(labels[status] || status || '-') + '</span>';
+}
+
+function formatSystemStatus(status) {
+  const labels = {
+    healthy: '正常',
+    degraded: '部分异常',
+    unhealthy: '异常',
+    unknown: '未知',
+  };
+  return labels[status] || status || '未知';
+}
+
+function formatStage(stage) {
+  const labels = {
+    pending: '等待',
+    routing: '路由中',
+    executing: '执行中',
+    completed: '已完成',
+    failed: '失败',
+    timeout: '超时',
+    cancelled: '已取消',
+  };
+  return labels[stage] || stage || '-';
+}
+
+function formatReplayStatus(status) {
+  const labels = {
+    available: '可回放',
+    unavailable: '不可回放',
+    partial: '部分可回放',
+    missing: '缺少事件',
+  };
+  return labels[status] || status || '-';
+}
+
+function formatReplaySource(source) {
+  const labels = {
+    task_events: '任务事件',
+    trace_events: '路由事件',
+    audit_events: '审计事件',
+  };
+  return labels[source] || source || '-';
+}
+
+function formatEventType(type) {
+  const labels = {
+    partial_output: '片段输出',
+    task_started: '任务开始',
+    task_completed: '任务完成',
+    task_failed: '任务失败',
+    routing_decision: '路由决策',
+    audit_event: '审计事件',
+  };
+  return labels[type] || type || '-';
+}
+
+function formatRouteType(type) {
+  const labels = {
+    keyword: '关键词',
+    prefix: '前缀',
+    fallback: '兜底',
+    explicit: '显式指定',
+    semantic: '语义路由',
+    core: '核心策略',
+  };
+  return labels[type] || type || '-';
+}
+
+function formatRiskLevel(level) {
+  const labels = {
+    low: '低',
+    medium: '中',
+    high: '高',
+    critical: '严重',
+  };
+  return labels[level] || level || '-';
 }
 
 function tagsHtml(tags) {
@@ -135,7 +213,7 @@ function renderCommandStatusOverview(overview, memory, feishu, embedding) {
   const feishuState = feishu && feishu.connected ? '已连接' : feishu && feishu.enabled ? '连接中' : '未启用';
   const embeddingState = embedding && embedding.has_local_model ? '本地可用' : 'API/关键词后备';
   const cards = [
-    ['整体状态', overview ? overview.status : 'unknown', overview && overview.status === 'healthy' ? 'green' : 'orange', '控制面当前汇总状态'],
+    ['整体状态', formatSystemStatus(overview ? overview.status : 'unknown'), overview && overview.status === 'healthy' ? 'green' : 'orange', '控制面当前汇总状态'],
     ['Agent 健康', agentsHealthy + '/' + agentsTotal, agentsHealthy === agentsTotal && agentsTotal > 0 ? 'green' : 'orange', '健康数 / 总数'],
     ['任务', tasksTotal + ' 总数', tasksFailed ? 'red' : 'green', tasksFailed + ' 失败'],
     ['记忆', (memory && memory.total) ?? 0, '', '团队与个人记忆条目'],
@@ -165,7 +243,7 @@ function renderCommandErrors(overview) {
 function renderCommandRouting(overview) {
   const strategies = (overview && overview.strategies) || [];
   $('command-routing-list').innerHTML = strategies.length ? strategies.slice(0, 6).map(strategy => (
-    listItem(strategy.name || '-', (strategy.kind || '-') + ' · ' + (strategy.enabled === false ? '禁用' : '启用'))
+    listItem(strategy.name || '-', formatRouteType(strategy.kind) + ' · ' + (strategy.enabled === false ? '禁用' : '启用'))
   )).join('') : emptyHtml('暂无策略');
 }
 
@@ -203,7 +281,7 @@ async function loadTasksWorkbench() {
   $('tasks-tbody').innerHTML = ((tasks && tasks.tasks) || []).map(taskRow).join('') ||
     '<tr><td colspan="7" class="empty">暂无任务</td></tr>';
   $('task-errors-list').innerHTML = ((errors && errors.errors) || []).map(error => (
-    listItem(error.trace_id || 'failed', (error.error_message || '').slice(0, 140))
+    listItem(error.trace_id || '失败任务', (error.error_message || '').slice(0, 140))
   )).join('') || emptyHtml('暂无失败任务');
 }
 
@@ -247,7 +325,7 @@ function renderTaskExplanation(data) {
   const task = data.task || {};
   $('task-detail-summary').innerHTML =
     '<div><strong>状态：</strong>' + statusBadge(data.status) + '</div>' +
-    '<div><strong>阶段：</strong>' + escapeHtml(data.stage || '-') + '</div>' +
+    '<div><strong>阶段：</strong>' + escapeHtml(formatStage(data.stage)) + '</div>' +
     '<div><strong>摘要：</strong>' + escapeHtml(data.summary || '-') + '</div>' +
     '<div><strong>Agent：</strong>' + escapeHtml(task.routed_agent || '-') + '</div>' +
     '<div><strong>耗时：</strong>' + escapeHtml(formatMs(task.execution_time_ms)) + '</div>';
@@ -275,9 +353,9 @@ function renderTaskReplay(data) {
     return;
   }
   const events = data.timeline || [];
-  const header = '<div class="item-meta">状态：' + escapeHtml(data.replay_status || '-') +
+  const header = '<div class="item-meta">状态：' + escapeHtml(formatReplayStatus(data.replay_status)) +
     ' · 事件：' + escapeHtml(data.event_count || 0) +
-    ' · 来源：' + escapeHtml(data.source || '-') + '</div>';
+    ' · 来源：' + escapeHtml(formatReplaySource(data.source)) + '</div>';
   const rows = events.map(formatReplayEvent).join('') || emptyHtml('暂无事件');
   $('task-replay-content').innerHTML = header + rows;
 }
@@ -289,7 +367,7 @@ function formatReplayEvent(event, index) {
   const border = type === 'partial_output' ? '#2563eb' : '#cbd5e1';
   return '<div class="detail-event" style="border-left-color:' + border + '">' +
     '<div class="item-meta">' + (index + 1) + '. ' + escapeHtml(event.created_at || '-') +
-    ' · ' + escapeHtml(type) + (event.agent_id ? ' · ' + escapeHtml(event.agent_id) : '') + '</div>' +
+    ' · ' + escapeHtml(formatEventType(type)) + (event.agent_id ? ' · ' + escapeHtml(event.agent_id) : '') + '</div>' +
     (message ? '<div>' + escapeHtml(message).slice(0, 320) + '</div>' : '') +
   '</div>';
 }
@@ -429,7 +507,7 @@ async function loadRoutingWorkbench() {
   ]);
   renderAgentOptions((agents && agents.agents) || []);
   $('routing-strategies-list').innerHTML = ((strategies && strategies.strategies) || []).map(strategy => (
-    listItem(strategy.name || '-', (strategy.kind || '-') + ' · ' + (strategy.enabled === false ? '禁用' : '启用'))
+    listItem(strategy.name || '-', formatRouteType(strategy.kind) + ' · ' + (strategy.enabled === false ? '禁用' : '启用'))
   )).join('') || emptyHtml('暂无策略');
   renderRouteRules((rules && rules.rules) || []);
 }
@@ -450,7 +528,7 @@ function renderRouteRules(rules) {
   $('route-matrix-list').innerHTML = '<table><thead><tr><th>规则</th><th>匹配</th><th>第一选择</th><th>第二选择</th><th>类型</th><th>操作</th></tr></thead><tbody>' +
     rules.map(rule => '<tr><td>' + tagsHtml([rule.name]) + '</td><td>' + escapeHtml((rule.patterns || []).join(', ') || '-') +
       '</td><td>' + escapeHtml(rule.first_agent || rule.target_agent || '-') + '</td><td>' + escapeHtml(rule.second_agent || '-') +
-      '</td><td>' + escapeHtml(rule.type || '-') + '</td><td>' + rowButton('删除', 'delete-route-rule', rule.name) + '</td></tr>').join('') +
+      '</td><td>' + escapeHtml(formatRouteType(rule.type)) + '</td><td>' + rowButton('删除', 'delete-route-rule', rule.name) + '</td></tr>').join('') +
     '</tbody></table>';
 }
 
@@ -500,7 +578,7 @@ async function loadAuditWorkbench() {
   $('audit-tbody').innerHTML = events.map(event => (
     '<tr><td>' + escapeHtml(formatTime(event.created_at)) + '</td><td>' + escapeHtml(event.module || '-') +
     '</td><td>' + escapeHtml(event.action || '-') + '</td><td>' + escapeHtml(event.agent_id || '-') +
-    '</td><td>' + escapeHtml(event.risk_level || '-') + '</td><td>' + escapeHtml(event.trace_id || '-') + '</td></tr>'
+    '</td><td>' + escapeHtml(formatRiskLevel(event.risk_level)) + '</td><td>' + escapeHtml(event.trace_id || '-') + '</td></tr>'
   )).join('') || '<tr><td colspan="6" class="empty">暂无审计事件</td></tr>';
 }
 

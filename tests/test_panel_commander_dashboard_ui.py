@@ -74,6 +74,50 @@ def test_panel_commander_dashboard_deduplicates_command_health_overview():
     assert "renderCommandHealth" not in js
 
 
+def test_panel_commander_dashboard_localizes_user_visible_status_codes():
+    html = _read(PANEL_HTML)
+    js = _read(PANEL_JS)
+
+    for text in [
+        "指挥舱总览",
+        "任务工作台",
+        "Agent 工作台",
+        "路由工作台",
+        "审计工作台",
+        "记忆工作台",
+        "编排工作台",
+        "系统配置",
+        "任务详情",
+    ]:
+        assert text in html
+
+    for text in [
+        "function formatSystemStatus",
+        "function formatStage",
+        "function formatReplayStatus",
+        "function formatReplaySource",
+        "function formatEventType",
+        "部分异常",
+        "可回放",
+        "任务事件",
+        "片段输出",
+    ]:
+        assert text in js
+
+    for text in [
+        "Command Center",
+        "Task Workbench",
+        "Agent Workbench",
+        "Routing Workbench",
+        "Audit Workbench",
+        "Memory Workbench",
+        "Orchestration Workbench",
+        "Settings",
+        "Task Detail",
+    ]:
+        assert text not in html
+
+
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():
     js = _read(PANEL_JS)
 

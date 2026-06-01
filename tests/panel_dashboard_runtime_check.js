@@ -231,6 +231,8 @@ async function main() {
   }
   const statusOverview = document.getElementById('command-status-overview').innerHTML;
   assert(statusOverview.includes('整体状态'));
+  assert(statusOverview.includes('部分异常'));
+  assert(!statusOverview.includes('degraded'));
   assert(statusOverview.includes('Agent 健康'));
   assert(statusOverview.includes('1/2'));
   assert(statusOverview.includes('任务'));
@@ -245,7 +247,11 @@ async function main() {
   await context.openTaskDetail('t1');
   assert(document.getElementById('task-replay-panel').classList.contains('open'));
   assert(document.getElementById('task-detail-summary').innerHTML.includes('Task completed'));
-  assert(document.getElementById('task-replay-content').innerHTML.includes('partial_output'));
+  assert(document.getElementById('task-detail-summary').innerHTML.includes('已完成'));
+  assert(document.getElementById('task-replay-content').innerHTML.includes('可回放'));
+  assert(document.getElementById('task-replay-content').innerHTML.includes('任务事件'));
+  assert(document.getElementById('task-replay-content').innerHTML.includes('片段输出'));
+  assert(!document.getElementById('task-replay-content').innerHTML.includes('partial_output'));
   context.closeTaskDetail();
   assert(!document.getElementById('task-replay-panel').classList.contains('open'));
 

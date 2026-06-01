@@ -11,7 +11,7 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-title">AgentMind</div>
-      <div class="brand-subtitle">Commander</div>
+      <div class="brand-subtitle">指挥官驾驶舱</div>
     </div>
     <nav class="main-nav" aria-label="AgentMind 控制台">
       <button class="nav-item active" type="button" data-page="command">指挥舱</button>
@@ -30,7 +30,7 @@
     <section class="page active" id="page-command" data-page-panel="command">
       <header class="page-header">
         <div>
-          <p class="eyebrow">Command Center</p>
+          <p class="eyebrow">指挥舱总览</p>
           <h1>指挥舱</h1>
         </div>
         <button class="btn-outline" type="button" data-action="refresh-current">刷新</button>
@@ -72,7 +72,7 @@
     <section class="page" id="page-tasks" data-page-panel="tasks" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Task Workbench</p>
+          <p class="eyebrow">任务工作台</p>
           <h1>任务台</h1>
         </div>
         <div class="toolbar">
@@ -107,7 +107,7 @@
     <section class="page" id="page-agents" data-page-panel="agents" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Agent Workbench</p>
+          <p class="eyebrow">Agent 工作台</p>
           <h1>Agent 台</h1>
         </div>
         <div class="toolbar">
@@ -118,10 +118,10 @@
       <section class="panel" id="add-agent-panel" hidden>
         <div class="panel-head"><h2>手动添加 Agent</h2></div>
         <div class="form-grid">
-          <label>ID <input id="new-agent-id" type="text" placeholder="my_agent"></label>
-          <label>名称 <input id="new-agent-name" type="text" placeholder="My Agent"></label>
+          <label>Agent ID <input id="new-agent-id" type="text" placeholder="my_agent"></label>
+          <label>名称 <input id="new-agent-name" type="text" placeholder="我的 Agent"></label>
           <label>命令 <input id="new-agent-cmd" type="text" placeholder="myagent -p '{instruction}'"></label>
-          <label>标签 <input id="new-agent-tags" type="text" placeholder="code, analysis"></label>
+          <label>标签 <input id="new-agent-tags" type="text" placeholder="代码, 分析"></label>
           <button class="btn-primary" type="button" data-action="add-agent">添加</button>
           <span class="form-message" id="add-agent-msg"></span>
         </div>
@@ -140,7 +140,7 @@
     <section class="page" id="page-routing" data-page-panel="routing" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Routing Workbench</p>
+          <p class="eyebrow">路由工作台</p>
           <h1>路由台</h1>
         </div>
         <button class="btn-outline" type="button" data-action="toggle-route-form">添加规则</button>
@@ -158,9 +158,9 @@
             <select id="rm-first"></select>
             <select id="rm-second"></select>
             <select id="rm-type">
-              <option value="keyword">keyword</option>
-              <option value="prefix">prefix</option>
-              <option value="fallback">fallback</option>
+              <option value="keyword">关键词</option>
+              <option value="prefix">前缀</option>
+              <option value="fallback">兜底</option>
             </select>
             <button class="btn-primary" type="button" data-action="save-route-rule">保存</button>
           </div>
@@ -172,7 +172,7 @@
     <section class="page" id="page-audit" data-page-panel="audit" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Audit Workbench</p>
+          <p class="eyebrow">审计工作台</p>
           <h1>审计台</h1>
         </div>
         <button class="btn-outline" type="button" data-action="load-audit">刷新</button>
@@ -197,7 +197,7 @@
     <section class="page" id="page-memory" data-page-panel="memory" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Memory Workbench</p>
+          <p class="eyebrow">记忆工作台</p>
           <h1>记忆台</h1>
         </div>
         <button class="btn-outline danger" type="button" data-action="cleanup-memory">清理过期</button>
@@ -217,7 +217,7 @@
     <section class="page" id="page-orchestrator" data-page-panel="orchestrator" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Orchestration Workbench</p>
+          <p class="eyebrow">编排工作台</p>
           <h1>编排台</h1>
         </div>
       </header>
@@ -231,7 +231,7 @@
     <section class="page" id="page-settings" data-page-panel="settings" hidden>
       <header class="page-header">
         <div>
-          <p class="eyebrow">Settings</p>
+          <p class="eyebrow">系统配置</p>
           <h1>配置</h1>
         </div>
         <button class="btn-primary" type="button" data-action="save-retention-settings">保存保留设置</button>
@@ -239,31 +239,31 @@
       <div class="settings-grid">
         <section class="panel">
           <div class="panel-head"><h2>飞书通道</h2></div>
-          <label>App ID <input id="feishu-app-id" type="text" placeholder="cli_xxx"></label>
-          <label>Secret <input id="feishu-app-secret" type="password" placeholder="密钥"></label>
+          <label>应用 ID <input id="feishu-app-id" type="text" placeholder="cli_xxx"></label>
+          <label>应用密钥 <input id="feishu-app-secret" type="password" placeholder="密钥"></label>
           <button class="btn-primary" id="btn-feishu-toggle" type="button" data-action="toggle-feishu">未连接</button>
           <span class="form-message" id="feishu-save-msg"></span>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>语义路由</h2></div>
-          <label>Endpoint <input id="setting-sr-endpoint" type="text"></label>
-          <label>Key <input id="setting-sr-key" type="password"></label>
-          <label>Model <input id="setting-sr-model" type="text"></label>
+          <label>接口地址 <input id="setting-sr-endpoint" type="text"></label>
+          <label>密钥 <input id="setting-sr-key" type="password"></label>
+          <label>模型 <input id="setting-sr-model" type="text"></label>
           <button class="btn-primary" id="btn-sr-toggle" type="button" data-action="toggle-semantic">已禁用</button>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>Embedding</h2></div>
-          <label>Endpoint <input id="setting-emb-endpoint" type="text"></label>
-          <label>Key <input id="setting-emb-key" type="password"></label>
-          <label>Model <input id="setting-emb-model" type="text" placeholder="text-embedding-3-small"></label>
+          <label>接口地址 <input id="setting-emb-endpoint" type="text"></label>
+          <label>密钥 <input id="setting-emb-key" type="password"></label>
+          <label>模型 <input id="setting-emb-model" type="text" placeholder="text-embedding-3-small"></label>
           <button class="btn-primary" id="btn-emb-toggle" type="button" data-action="toggle-embedding">已禁用</button>
           <p class="muted" id="embedding-status-line"></p>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>Core LLM</h2></div>
-          <label>Endpoint <input id="setting-core-llm-endpoint" type="text"></label>
-          <label>Key <input id="setting-core-llm-key" type="password"></label>
-          <label>Model <input id="setting-core-llm-model" type="text"></label>
+          <label>接口地址 <input id="setting-core-llm-endpoint" type="text"></label>
+          <label>密钥 <input id="setting-core-llm-key" type="password"></label>
+          <label>模型 <input id="setting-core-llm-model" type="text"></label>
           <button class="btn-primary" id="btn-core-llm-toggle" type="button" data-action="toggle-core-llm">已禁用</button>
         </section>
         <section class="panel panel-span-2">
@@ -282,7 +282,7 @@
   <aside class="drawer" id="task-replay-panel" data-detail-drawer aria-hidden="true">
     <div class="drawer-head">
       <div>
-        <p class="eyebrow">Task Detail</p>
+        <p class="eyebrow">任务详情</p>
         <h2 id="task-replay-title">任务详情</h2>
       </div>
       <button class="btn-outline" type="button" data-action="close-task-detail">关闭</button>

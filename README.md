@@ -355,7 +355,7 @@ AgentMind v1 已经可以作为本地 AI 指挥中枢使用，但它还不是最
 
 ## 适合场景
 
-AgentMind 适合以下使用方式：
+AgentMind 适用于以下使用方式：
 
 - 个人 AI 工作台：统一管理本机多个 AI 编程工具。
 - 团队 AI 助手中枢：通过飞书等入口把任务分发给不同 Agent。
@@ -372,28 +372,12 @@ python -m compileall -q src tests
 python -m pytest -q
 ```
 
-构建 wheel：
+构建wheel：
 
 ```bash
 python -m pip wheel . --no-deps -w dist
 ```
 
-## 路线图
-
-AgentMind 的长期目标是成为一个真正的 AI 运行控制层：
-
-```text
-v1.0  稳定中枢：路由、记忆、面板、飞书、MCP、A2A 基础闭环
-v1.x  强化可用性：安装发布、配置体验、任务观测、更多真实场景打磨
-v2.0  团队协作层：权限、空间、知识治理、多用户协同
-v3.0  自主执行层：任务规划、长期目标、自动复盘和自我优化
-```
-
-更完整的内部路线图见本地文档：
-
-```text
-agentmind_roadmap.md
-```
 
 ## 许可证
 

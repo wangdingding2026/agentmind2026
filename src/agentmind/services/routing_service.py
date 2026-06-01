@@ -107,6 +107,12 @@ def cleanup_stale_streams(ttl_seconds: int = 600):
     return _session.cleanup_stale_streams(ttl_seconds)
 
 
+async def _broadcast_stream_chunks(trace_id: str, chunks):
+    async for chunk in chunks:
+        _session.broadcast_stream_chunk(trace_id, chunk)
+        yield chunk
+
+
 def _step_security_intercept(msg: str, agent_registry) -> str | None:
     """安全拦截：检测敏感信息，降级到本地 Agent。
 
@@ -197,7 +203,7 @@ async def _handle_attached_command(trace_id: str, route_req: RouteRequest, reque
             result = "".join(full_output)
             await record_attached_turn(trace_id, route_req.message, result)
             yield {"event": "status", "data": json.dumps({"status": "complete", "trace_id": trace_id})}
-        return EventSourceResponse(attach_event_gen())
+        return EventSourceResponse(_broadcast_stream_chunks(trace_id, attach_event_gen()))
 
     result = await executor.execute(context_prompt)
     await record_attached_turn(trace_id, route_req.message, result.output if result.success else result.error or "")
@@ -227,7 +233,11 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
     if plan:
         app = _get_app(request)
         agent_registry = app.state.agent_registry
-        return EventSourceResponse(_execute_orchestration_plan(plan, route_req.user_id or "", agent_registry, None, route_req.message))
+        plan_id = plan.get("plan_id", "")
+        chunks = _execute_orchestration_plan(plan, route_req.user_id or "", agent_registry, None, route_req.message)
+        if plan_id:
+            chunks = _broadcast_stream_chunks(plan_id, chunks)
+        return EventSourceResponse(chunks)
 
     if route_req.session_id:
         app = _get_app(request)
@@ -281,7 +291,7 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
                         "error": "没有可用的 Agent，请检查 Agent 是否已安装并启用",
                         "trace_id": trace_id,
                     })}
-                return EventSourceResponse(_no_agent_sse())
+                return EventSourceResponse(_broadcast_stream_chunks(trace_id, _no_agent_sse()))
             return JSONResponse(status_code=503, content={
                 "error": "没有可用的 Agent，请检查 Agent 是否已安装并启用",
                 "trace_id": trace_id,
@@ -290,7 +300,8 @@ async def _route_request_impl(route_req: RouteRequest, request: Request):
         executor = _select_executor(decision, agent_registry)
 
         if route_req.stream:
-            return EventSourceResponse(executor.run_stream(decision, trace_id, route_req.user_id or ""))
+            chunks = executor.run_stream(decision, trace_id, route_req.user_id or "")
+            return EventSourceResponse(_broadcast_stream_chunks(trace_id, chunks))
         return await executor.run_json(decision, trace_id, route_req.user_id or "")
 
     return JSONResponse(status_code=500, content={"error": "routing failed", "trace_id": trace_id})
@@ -310,7 +321,8 @@ async def route_stream(msg: str, user_id: str, agent_registry, engine, settings,
 
     plan = _match_orchestration(msg)
     if plan:
-        await _execute_orchestration_plan(plan, user_id, agent_registry, send_func, msg)
+        async for _event in _execute_orchestration_plan(plan, user_id, agent_registry, send_func, msg):
+            pass
         yield "【AgentMind】\n编排执行完成"
         return
 
@@ -368,15 +380,16 @@ async def _execute_orchestration_plan(plan: dict, user_id: str, agent_registry, 
             agent_registry,
             initial_instruction=user_msg,
         ):
-            if not send_func:
-                continue
-            if event["event"] == "partial":
-                await send_func(event["data"].get("content", ""))
-            elif event["event"] == "node_status" and event["data"].get("status") == "failed":
-                await send_func(f"编排步骤 {event['data'].get('step_id')} 失败：{event['data'].get('error')}")
+            if send_func:
+                if event["event"] == "partial":
+                    await send_func(event["data"].get("content", ""))
+                elif event["event"] == "node_status" and event["data"].get("status") == "failed":
+                    await send_func(f"编排步骤 {event['data'].get('step_id')} 失败：{event['data'].get('error')}")
+            yield {"event": event["event"], "data": json.dumps(event.get("data", {}))}
     except ValueError as e:
         if send_func:
             await send_func(f"编排执行失败：{e}")
+        yield {"event": "error", "data": json.dumps({"error": f"编排执行失败：{e}"})}
 
 
 def _resolve_agent_mention(raw: str, agent_registry) -> str | None:

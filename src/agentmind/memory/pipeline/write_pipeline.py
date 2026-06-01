@@ -10,6 +10,7 @@ from agentmind.memory.provider import (
 from agentmind.memory.types import MemoryEntry, MemoryType
 
 logger = logging.getLogger("agentmind")
+VECTOR_RUNTIME_WRITE_ENABLED = True
 
 
 class WritePipeline:
@@ -171,13 +172,21 @@ class WritePipeline:
 
     async def _async_enrich(self, entry: MemoryEntry, content: str, created_ids: list[str]):
         """异步富化：embedding 生成 + 关系抽取 + Core Memory 候选检测。"""
-        # 7. embedding 生成（仅当向量存储可用时）
-        if is_vec_available():
+        # 7. Vector write is best-effort: memory write succeeds even if embedding fails.
+        if VECTOR_RUNTIME_WRITE_ENABLED:
             try:
                 emb = await MemoryEmbeddingProvider().generate_embedding(content)
                 if emb:
                     blob = embedding_to_blob(emb)
-                    await self._repository.write_vector_embedding(created_ids, blob)
+                    settings = read_memory_settings()
+                    emb_cfg = settings.get("embedding", {})
+                    await self._repository.write_vector_embedding(
+                        created_ids,
+                        blob,
+                        model=emb_cfg.get("model", entry.embedding_model),
+                        version=int(emb_cfg.get("version", entry.embedding_version or 1)),
+                        dimension=len(emb),
+                    )
             except Exception as e:
                 logger.debug("异步 embedding 失败: %s", e)
 
@@ -206,6 +215,7 @@ class WritePipeline:
 
 
 def is_vec_available() -> bool:
+    """Compatibility probe for callers that still expose sqlite-vec status."""
     try:
         from agentmind.storage.db import is_vec_available as _f
         return _f()

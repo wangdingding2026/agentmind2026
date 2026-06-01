@@ -213,6 +213,154 @@ async def test_conversation_history_uses_dedicated_executor_in_api_path(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_streaming_route_broadcasts_chunks_to_panel_listener(tmp_path, monkeypatch):
+    from agentmind.routing.context import RequestIdentity, RoutingContext, RoutingDecision
+    from agentmind.services import routing_service
+
+    app = build_app(tmp_path)
+    service = RoutingService(app)
+    decision = RoutingDecision(
+        agent_id="agentmind",
+        strategy="test",
+        context=RoutingContext(
+            identity=RequestIdentity(user_id="u_stream"),
+            raw_message="stream this",
+        ),
+    )
+    chunks = [
+        {"event": "status", "data": json.dumps({"status": "routed", "trace_id": "trace-stream"})},
+        {"event": "partial", "data": json.dumps({"content": "hello", "trace_id": "trace-stream"})},
+        {"event": "status", "data": json.dumps({"status": "completed", "trace_id": "trace-stream"})},
+    ]
+
+    async def fake_resolve(**kwargs):
+        return routing_service._PipelineResult(trace_id="trace-stream", decision=decision)
+
+    class FakeExecutor:
+        def __init__(self, agent_registry):
+            pass
+
+        async def run_stream(self, received_decision, trace_id, user_id):
+            for chunk in chunks:
+                yield chunk
+
+    monkeypatch.setattr(routing_service, "_resolve_routing_decision", fake_resolve)
+    monkeypatch.setattr(routing_service, "SelfReplyExecutor", FakeExecutor)
+    monkeypatch.setattr(
+        "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision",
+        AsyncMock(),
+    )
+
+    listener = routing_service.register_stream_listener("trace-stream")
+    try:
+        response = await service.route_request({
+            "message": "stream this",
+            "user_id": "u_stream",
+            "stream": True,
+        })
+
+        streamed_chunks = [chunk async for chunk in response.body_iterator]
+        panel_chunks = [listener.get_nowait() for _ in chunks]
+    finally:
+        routing_service.unregister_stream_listener("trace-stream", listener)
+
+    assert streamed_chunks == chunks
+    assert panel_chunks == chunks
+
+
+@pytest.mark.asyncio
+async def test_no_agent_stream_broadcasts_error_to_panel_listener(tmp_path, monkeypatch):
+    from agentmind.routing.context import RequestIdentity, RoutingContext, RoutingDecision
+    from agentmind.services import routing_service
+
+    app = build_app(tmp_path)
+    service = RoutingService(app)
+    decision = RoutingDecision(
+        agent_id="",
+        strategy="test",
+        context=RoutingContext(
+            identity=RequestIdentity(user_id="u_stream"),
+            raw_message="stream this",
+        ),
+    )
+
+    async def fake_resolve(**kwargs):
+        return routing_service._PipelineResult(trace_id="trace-no-agent", decision=decision)
+
+    monkeypatch.setattr(routing_service, "_resolve_routing_decision", fake_resolve)
+    monkeypatch.setattr(
+        "agentmind.routing.side_effects.trace_recorder.TraceRecorder.record_decision",
+        AsyncMock(),
+    )
+
+    listener = routing_service.register_stream_listener("trace-no-agent")
+    try:
+        response = await service.route_request({
+            "message": "stream this",
+            "user_id": "u_stream",
+            "stream": True,
+        })
+
+        streamed_chunks = [chunk async for chunk in response.body_iterator]
+        panel_chunks = [listener.get_nowait() for _ in streamed_chunks]
+    finally:
+        routing_service.unregister_stream_listener("trace-no-agent", listener)
+
+    assert streamed_chunks
+    assert streamed_chunks == panel_chunks
+    assert streamed_chunks[0]["event"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_attached_stream_broadcasts_chunks_to_panel_listener(tmp_path, monkeypatch):
+    from agentmind.agents.base import StreamEvent, StreamEventType
+    from agentmind.services import routing_service
+
+    app = build_app(tmp_path)
+    service = RoutingService(app)
+
+    class AttachRegistry:
+        def get_bound_task(self, session_id):
+            return "trace-attached"
+
+    class FakeExecutor:
+        async def execute_stream(self, prompt):
+            yield StreamEvent(StreamEventType.CONTENT, "attached hello")
+
+    app.state.attach_registry = AttachRegistry()
+    app.state.agent_registry.get_executor = lambda agent_id: FakeExecutor()
+    app.state.agent_registry.executors = {"mock_echo": FakeExecutor()}
+
+    async def fake_get_task_detail(trace_id):
+        return {
+            "trace_id": trace_id,
+            "user_message": "original task",
+            "result_summary": "original result",
+            "routed_agent": "mock_echo",
+        }
+
+    monkeypatch.setattr("agentmind.storage.db.get_task_detail", fake_get_task_detail)
+    monkeypatch.setattr(routing_service, "record_attached_turn", AsyncMock())
+
+    listener = routing_service.register_stream_listener("trace-attached")
+    try:
+        response = await service.route_request({
+            "message": "continue",
+            "user_id": "u_stream",
+            "session_id": "session-1",
+            "stream": True,
+        })
+
+        streamed_chunks = [chunk async for chunk in response.body_iterator]
+        panel_chunks = [listener.get_nowait() for _ in streamed_chunks]
+    finally:
+        routing_service.unregister_stream_listener("trace-attached", listener)
+
+    assert streamed_chunks == panel_chunks
+    assert streamed_chunks[0]["event"] == "partial"
+
+
+@pytest.mark.asyncio
 async def test_conversation_history_uses_dedicated_executor_in_text_stream(tmp_path, monkeypatch):
     from agentmind.routing.context import RequestIdentity, RoutingContext, RoutingDecision
     from agentmind.routing.semantic_intent import SemanticIntent, SemanticIntentType

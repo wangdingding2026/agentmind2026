@@ -5,12 +5,18 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import math
 import re
 import sqlite3
+import struct
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from agentmind.memory.dto import MemoryWriteCommand
+from agentmind.memory.provider import (
+    embedding_to_blob,
+    generate_embedding_sync,
+)
 from agentmind.memory.schema import initialize_memory_storage
 
 
@@ -386,6 +392,9 @@ class SqliteMemoryRepository:
         conn = self._get_conn()
         try:
             total = conn.execute("SELECT COUNT(*) as cnt FROM memory_cards").fetchone()["cnt"]
+            with_embedding = conn.execute(
+                "SELECT COUNT(*) as cnt FROM memory_vectors"
+            ).fetchone()["cnt"]
             by_source = {
                 (row["source_agent"] or "unknown"): row["cnt"]
                 for row in conn.execute(
@@ -407,7 +416,6 @@ class SqliteMemoryRepository:
             latest = conn.execute(
                 "SELECT created_at FROM memory_cards ORDER BY created_at DESC LIMIT 1"
             ).fetchone()
-            with_embedding = 0
             return {
                 "total": total,
                 "by_source_agent": by_source,
@@ -706,24 +714,52 @@ class SqliteMemoryRepository:
             )
         """)
 
-    async def rebuild_vector_index(self, *, target_version: int, model: str = "", limit: int = 100) -> int:
-        return await asyncio.to_thread(self._rebuild_vector_index_sync, target_version, model, limit)
+    async def rebuild_vector_index(
+        self, *, target_version: int, model: str = "", limit: int = 100
+    ) -> int:
+        return await asyncio.to_thread(
+            self._rebuild_vector_index_sync, target_version, model, limit
+        )
 
-    def _rebuild_vector_index_sync(self, target_version: int, model: str = "", limit: int = 100) -> int:
-        if target_version <= 1:
+    def _rebuild_vector_index_sync(
+        self, target_version: int, model: str = "", limit: int = 100
+    ) -> int:
+        if target_version <= 0 or limit <= 0:
             return 0
         conn = self._get_conn()
         try:
             rows = conn.execute(
-                """SELECT c.memory_id, r.content, c.summary
+                """SELECT c.memory_id, c.user_id, r.content, c.summary, c.card_text
                    FROM memory_cards c
                    JOIN raw_memory r ON r.memory_id = c.raw_memory_id
-                   WHERE COALESCE(json_extract(c.score_metadata, '$.embedding_version'), 1) < ?
+                   LEFT JOIN memory_vectors v ON v.memory_id = c.memory_id
+                   WHERE v.memory_id IS NULL
+                      OR v.version < ?
+                      OR (? != '' AND v.model != ?)
                    ORDER BY c.created_at ASC, c.memory_id ASC
                    LIMIT ?""",
-                (target_version, limit),
+                (target_version, model, model, limit),
             ).fetchall()
-            return len(rows) if rows else 0
+            rebuilt = 0
+            for row in rows:
+                text = "\n\n".join(
+                    part for part in [row["summary"], row["content"]]
+                    if part
+                ) or row["card_text"] or ""
+                embedding = generate_embedding_sync(text)
+                if not embedding:
+                    continue
+                self._write_vector_embedding_sync(
+                    [row["memory_id"]],
+                    embedding_to_blob(embedding),
+                    model=model,
+                    version=target_version,
+                    dimension=len(embedding),
+                    conn=conn,
+                )
+                rebuilt += 1
+            conn.commit()
+            return rebuilt
         finally:
             conn.close()
 
@@ -1221,11 +1257,171 @@ class SqliteMemoryRepository:
         finally:
             conn.close()
 
-    async def write_vector_embedding(self, memory_ids: list[str], embedding_blob: bytes) -> None:
-        await asyncio.to_thread(self._write_vector_embedding_sync, memory_ids, embedding_blob)
+    async def write_vector_embedding(
+        self,
+        memory_ids: list[str],
+        embedding_blob: bytes,
+        *,
+        model: str = "",
+        version: int = 1,
+        dimension: int = 0,
+    ) -> None:
+        await asyncio.to_thread(
+            self._write_vector_embedding_sync,
+            memory_ids,
+            embedding_blob,
+            model,
+            version,
+            dimension,
+            None,
+        )
 
-    def _write_vector_embedding_sync(self, memory_ids: list[str], embedding_blob: bytes) -> None:
-        return None
+    def _write_vector_embedding_sync(
+        self,
+        memory_ids: list[str],
+        embedding_blob: bytes,
+        model: str = "",
+        version: int = 1,
+        dimension: int = 0,
+        conn: sqlite3.Connection | None = None,
+    ) -> None:
+        if not memory_ids or not embedding_blob:
+            return
+        resolved_dimension = dimension or _embedding_blob_dimension(embedding_blob)
+        owns_conn = conn is None
+        conn = conn or self._get_conn()
+        try:
+            now = _now_sqlite()
+            for memory_id in memory_ids:
+                row = conn.execute(
+                    "SELECT user_id FROM memory_cards WHERE memory_id=?",
+                    (memory_id,),
+                ).fetchone()
+                if row is None:
+                    continue
+                conn.execute(
+                    """INSERT INTO memory_vectors
+                       (memory_id, user_id, embedding, dimension, model, version, backend, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(memory_id) DO UPDATE SET
+                           user_id=excluded.user_id,
+                           embedding=excluded.embedding,
+                           dimension=excluded.dimension,
+                           model=excluded.model,
+                           version=excluded.version,
+                           backend=excluded.backend,
+                           updated_at=excluded.updated_at""",
+                    (
+                        memory_id,
+                        row["user_id"],
+                        embedding_blob,
+                        resolved_dimension,
+                        model,
+                        version,
+                        self._vector_backend(),
+                        now,
+                    ),
+                )
+            if owns_conn:
+                conn.commit()
+        finally:
+            if owns_conn:
+                conn.close()
+
+    async def search_vector(
+        self,
+        *,
+        query_embedding: list[float],
+        user_id: str = "",
+        access_levels: list[str] | None = None,
+        memory_types: list[str] | None = None,
+        source_kinds: list[str] | None = None,
+        exclude_conversation_id: str = "",
+        limit: int = 10,
+    ) -> list[dict]:
+        return await asyncio.to_thread(
+            self._search_vector_sync,
+            query_embedding,
+            user_id,
+            access_levels or [],
+            memory_types or [],
+            source_kinds or [],
+            exclude_conversation_id,
+            limit,
+        )
+
+    def _search_vector_sync(
+        self,
+        query_embedding: list[float],
+        user_id: str,
+        access_levels: list[str],
+        memory_types: list[str],
+        source_kinds: list[str],
+        exclude_conversation_id: str,
+        limit: int,
+    ) -> list[dict]:
+        if not query_embedding or limit <= 0:
+            return []
+        clauses = ["v.dimension = ?"]
+        params: list = [len(query_embedding)]
+        if user_id:
+            clauses.append("c.user_id = ?")
+            params.append(user_id)
+        if access_levels:
+            placeholders = ",".join("?" for _ in access_levels)
+            clauses.append(f"c.access_level IN ({placeholders})")
+            params.extend(access_levels)
+        if memory_types:
+            placeholders = ",".join("?" for _ in memory_types)
+            clauses.append(f"c.memory_type IN ({placeholders})")
+            params.extend(memory_types)
+        if source_kinds:
+            placeholders = ",".join("?" for _ in source_kinds)
+            clauses.append(f"c.source_kind IN ({placeholders})")
+            params.extend(source_kinds)
+        if exclude_conversation_id:
+            clauses.append("(c.conversation_id != ? AND c.session_id != ?)")
+            params.extend([exclude_conversation_id, exclude_conversation_id])
+        where = " AND ".join(clauses)
+
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                f"""SELECT c.*, v.embedding
+                    FROM memory_vectors v
+                    JOIN memory_cards c ON c.memory_id = v.memory_id
+                    WHERE {where}""",
+                params,
+            ).fetchall()
+            cards = []
+            for row in rows:
+                card = self._row_to_card(row)
+                candidate = _embedding_blob_to_list(row["embedding"])
+                score = _cosine_similarity(query_embedding, candidate)
+                if score <= 0:
+                    continue
+                card["_score"] = score
+                card["_route"] = "memory_vectors"
+                cards.append(card)
+            cards.sort(
+                key=lambda item: (
+                    -item["_score"],
+                    self._created_at_desc_sort_key(item.get("created_at", "")),
+                    item.get("memory_id", ""),
+                )
+            )
+            return cards[:limit]
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _vector_backend() -> str:
+        try:
+            from agentmind.storage.db import is_vec_available
+
+            return "sqlite-vec" if is_vec_available() else "sqlite"
+        except Exception:
+            return "sqlite"
 
     async def write_relations(
         self, user_id: str, relations: list[tuple[str, str, str, str, float]]
@@ -1368,6 +1564,13 @@ class SqliteMemoryRepository:
             return 0.0
 
     @staticmethod
+    def _created_at_desc_sort_key(created_at: str) -> int:
+        digits = "".join(ch for ch in str(created_at or "") if ch.isdigit())[:14]
+        if not digits:
+            return 0
+        return -int(digits.ljust(14, "0"))
+
+    @staticmethod
     def _row_to_raw(row) -> dict:
         raw = dict(row)
         try:
@@ -1389,3 +1592,34 @@ def _query_terms(query: str) -> list[str]:
         for index in range(max(0, len(cjk_only) - width + 1)):
             terms.append(cjk_only[index:index + width])
     return [term for term in dict.fromkeys(terms) if term]
+
+
+def _embedding_blob_dimension(embedding_blob: bytes) -> int:
+    if not embedding_blob:
+        return 0
+    return len(embedding_blob) // 4
+
+
+def _embedding_blob_to_list(embedding_blob: bytes) -> list[float]:
+    dimension = _embedding_blob_dimension(embedding_blob)
+    if dimension <= 0:
+        return []
+    try:
+        return list(struct.unpack(f"{dimension}f", embedding_blob))
+    except struct.error:
+        return []
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or len(left) != len(right):
+        return 0.0
+    dot = 0.0
+    left_norm = 0.0
+    right_norm = 0.0
+    for left_value, right_value in zip(left, right):
+        dot += left_value * right_value
+        left_norm += left_value * left_value
+        right_norm += right_value * right_value
+    if left_norm <= 0 or right_norm <= 0:
+        return 0.0
+    return dot / (math.sqrt(left_norm) * math.sqrt(right_norm))

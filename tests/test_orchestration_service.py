@@ -1,6 +1,65 @@
 import pytest
 
 
+@pytest.mark.asyncio
+async def test_route_request_orchestration_stream_yields_engine_events(tmp_path, monkeypatch):
+    import json
+
+    from agentmind.agents.registry import AgentRegistry
+    from agentmind.core.rule_engine import RuleEngine
+    from agentmind.services import routing_service
+    from agentmind.services.routing_service import RoutingService
+    from fastapi import FastAPI
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True)
+    agents_path = config_dir / "agents.yaml"
+    routes_path = config_dir / "routes.yaml"
+    agents_path.write_text("agents: []\n", encoding="utf-8")
+    routes_path.write_text("rules: []\n", encoding="utf-8")
+
+    app = FastAPI()
+    app.state.agent_registry = AgentRegistry(agents_path)
+    app.state.rule_engine = RuleEngine(routes_path, agent_registry=app.state.agent_registry)
+    app.state.settings = {}
+
+    class FakeOrchestrationService:
+        def match_plan(self, message):
+            return {
+                "plan_id": "flow-1",
+                "steps": [{"step_id": 1, "agent_id": "a", "instruction": "run", "depends_on": []}],
+            }
+
+    class FakeEngine:
+        async def execute_events(self, plan, agent_registry, initial_instruction=""):
+            yield {"event": "node_status", "data": {"step_id": 1, "status": "executing"}}
+            yield {"event": "partial", "data": {"step_id": 1, "content": "hello"}}
+            yield {"event": "status", "data": {"status": "orchestration_complete", "plan_id": plan.plan_id}}
+
+    monkeypatch.setattr(routing_service, "OrchestrationService", FakeOrchestrationService)
+    monkeypatch.setattr(routing_service, "OrchestrationEngine", lambda: FakeEngine())
+
+    listener = routing_service.register_stream_listener("flow-1")
+    try:
+        response = await RoutingService(app).route_request({
+            "message": "run flow",
+            "user_id": "u1",
+            "stream": True,
+        })
+
+        chunks = [chunk async for chunk in response.body_iterator]
+        panel_chunks = [listener.get_nowait() for _ in chunks]
+    finally:
+        routing_service.unregister_stream_listener("flow-1", listener)
+
+    assert chunks == [
+        {"event": "node_status", "data": json.dumps({"step_id": 1, "status": "executing"})},
+        {"event": "partial", "data": json.dumps({"step_id": 1, "content": "hello"})},
+        {"event": "status", "data": json.dumps({"status": "orchestration_complete", "plan_id": "flow-1"})},
+    ]
+    assert panel_chunks == chunks
+
+
 def test_orchestration_service_saves_lists_and_preserves_usage_count(tmp_path):
     from agentmind.services.orchestration_service import OrchestrationService
 
@@ -122,16 +181,56 @@ async def test_routing_service_execute_orchestration_plan_uses_engine_events(mon
     registry = object()
     monkeypatch.setattr(routing_service, "OrchestrationEngine", lambda: FakeEngine(), raising=False)
 
-    await routing_service._execute_orchestration_plan(
-        {
-            "plan_id": "p1",
-            "steps": [{"step_id": 1, "agent_id": "a", "instruction": "run", "depends_on": []}],
-        },
-        "u1",
-        registry,
-        send_func,
-        "user message",
-    )
+    chunks = [
+        chunk async for chunk in routing_service._execute_orchestration_plan(
+            {
+                "plan_id": "p1",
+                "steps": [{"step_id": 1, "agent_id": "a", "instruction": "run", "depends_on": []}],
+            },
+            "u1",
+            registry,
+            send_func,
+            "user message",
+        )
+    ]
 
     assert calls == [("p1", registry, "user message")]
     assert sent == ["hello", "编排步骤 2 失败：no agent"]
+    assert [chunk["event"] for chunk in chunks] == ["partial", "node_status"]
+
+
+@pytest.mark.asyncio
+async def test_route_stream_orchestration_consumes_event_generator(monkeypatch):
+    from agentmind.services import routing_service
+
+    calls = []
+
+    class FakeEngine:
+        async def execute_events(self, plan, agent_registry, initial_instruction=""):
+            calls.append((plan.plan_id, agent_registry, initial_instruction))
+            yield {"event": "partial", "data": {"step_id": 1, "content": "hello"}}
+            yield {"event": "status", "data": {"status": "orchestration_complete", "plan_id": plan.plan_id}}
+
+    monkeypatch.setattr(routing_service, "OrchestrationEngine", lambda: FakeEngine(), raising=False)
+    monkeypatch.setattr(
+        routing_service,
+        "_match_orchestration",
+        lambda msg: {
+            "plan_id": "flow-text",
+            "steps": [{"step_id": 1, "agent_id": "a", "instruction": "run", "depends_on": []}],
+        },
+    )
+
+    registry = object()
+    chunks = [
+        chunk async for chunk in routing_service.route_stream(
+            "run flow",
+            "u1",
+            registry,
+            object(),
+            {},
+        )
+    ]
+
+    assert calls == [("flow-text", registry, "run flow")]
+    assert chunks == ["【AgentMind】\n编排执行完成"]

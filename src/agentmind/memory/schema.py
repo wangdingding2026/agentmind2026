@@ -54,6 +54,17 @@ def ensure_canonical_tables(conn) -> None:
             updated_at TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS memory_vectors (
+            memory_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT '',
+            embedding BLOB NOT NULL,
+            dimension INTEGER NOT NULL DEFAULT 0,
+            model TEXT NOT NULL DEFAULT '',
+            version INTEGER NOT NULL DEFAULT 1,
+            backend TEXT NOT NULL DEFAULT 'sqlite',
+            updated_at TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS working_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -139,6 +150,8 @@ def ensure_canonical_tables(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_raw_memory_task ON raw_memory(source_task_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_user_created ON memory_cards(user_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_raw ON memory_cards(raw_memory_id)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_vectors_user ON memory_vectors(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_memory_vectors_version ON memory_vectors(version)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_conversation ON memory_cards(conversation_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_session ON memory_cards(session_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_source_kind ON memory_cards(source_kind, created_at DESC)",

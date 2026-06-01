@@ -413,12 +413,94 @@ async def test_retrieve_context_uses_reranker_when_enabled(monkeypatch):
     ]
 
 
+@pytest.mark.asyncio
+async def test_retrieve_context_merges_vector_rows(monkeypatch):
+    from agentmind.memory.service import MemoryService
+
+    class FakeEmbeddingProvider:
+        async def generate_embedding(self, text):
+            return [1.0, 0.0]
+
+    monkeypatch.setattr(
+        "agentmind.memory.service.MemoryEmbeddingProvider",
+        FakeEmbeddingProvider,
+    )
+
+    repo = FakeRetrievalRepository(
+        keyword_rows=[],
+        relation_rows=[],
+        recent_rows=[],
+        vector_rows=[
+            _card("vector-hit", "semantic vector result", 0.97),
+        ],
+    )
+    ctx = await MemoryService(repository=repo).retrieve_context(
+        "语义相近但没有关键词",
+        user_id="u_vector_ctx",
+        settings={
+            "embedding": {"enabled": True},
+            "memory": {"retrieval_max_candidates": 5, "context_max_bytes": 4096},
+        },
+        limit=5,
+    )
+
+    assert "vector_cards" in ctx.steps
+    assert [row["memory_id"] for row in ctx.recall_items] == ["vector-hit"]
+    assert repo.vector_query_embedding == [1.0, 0.0]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_skips_vector_rows_when_embedding_disabled(monkeypatch):
+    from agentmind.memory.service import MemoryService
+
+    class FailingEmbeddingProvider:
+        async def generate_embedding(self, text):
+            raise AssertionError("embedding disabled should skip vector generation")
+
+    monkeypatch.setattr(
+        "agentmind.memory.service.MemoryEmbeddingProvider",
+        FailingEmbeddingProvider,
+    )
+
+    repo = FakeRetrievalRepository(
+        keyword_rows=[],
+        relation_rows=[],
+        recent_rows=[
+            _card("recent-only", "recent fallback", 0.5),
+        ],
+        vector_rows=[
+            _card("vector-hidden", "hidden vector result", 0.99),
+        ],
+    )
+    ctx = await MemoryService(repository=repo).retrieve_context(
+        "向量关闭",
+        user_id="u_vector_disabled",
+        settings={
+            "embedding": {"enabled": False},
+            "memory": {"retrieval_max_candidates": 5, "context_max_bytes": 4096},
+        },
+        limit=5,
+    )
+
+    assert "vector_cards" not in ctx.steps
+    assert [row["memory_id"] for row in ctx.recall_items] == ["recent-only"]
+    assert repo.vector_query_embedding is None
+
+
 class FakeRetrievalRepository:
-    def __init__(self, keyword_rows=None, relation_rows=None, recent_rows=None):
+    def __init__(
+        self,
+        keyword_rows=None,
+        relation_rows=None,
+        recent_rows=None,
+        vector_rows=None,
+    ):
         self.keyword_rows = keyword_rows or []
         self.relation_rows = relation_rows or []
         self.recent_rows = recent_rows or []
+        self.vector_rows = vector_rows or []
         self.result_set_memory_ids = []
+        self.vector_query_embedding = None
 
     async def read_core_memory(self, user_id):
         return ""
@@ -437,6 +519,10 @@ class FakeRetrievalRepository:
 
     async def related_cards_for_query(self, **kwargs):
         return self.relation_rows
+
+    async def search_vector(self, **kwargs):
+        self.vector_query_embedding = kwargs.get("query_embedding")
+        return self.vector_rows
 
     async def get_raw(self, raw_memory_id, user_id=""):
         return None

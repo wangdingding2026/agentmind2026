@@ -22,6 +22,7 @@ def test_initialize_memory_storage_creates_only_canonical_tables(tmp_path):
     assert {
         "raw_memory",
         "memory_cards",
+        "memory_vectors",
         "working_memory",
         "core_memory",
         "memory_relations",
@@ -139,6 +140,107 @@ def test_repository_persists_and_filters_source_kind(tmp_path):
 
     assert [row["memory_id"] for row in rows] == ["turn-1"]
     assert rows[0]["source_kind"] == "conversation_turn"
+
+
+def test_repository_vector_write_and_search_uses_sqlite_fallback(tmp_path):
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.provider import embedding_to_blob
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    asyncio.run(repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="vector-deploy",
+        content="部署端口 8765 需要保留给 AgentMind 服务。",
+        summary="部署端口 8765",
+        user_id="u_vector",
+        access_level="shared",
+    )))
+    asyncio.run(repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="vector-cooking",
+        content="晚餐需要准备番茄鸡蛋。",
+        summary="晚餐菜单",
+        user_id="u_vector",
+        access_level="shared",
+    )))
+    asyncio.run(repo.write_vector_embedding(
+        ["vector-deploy"],
+        embedding_to_blob([1.0, 0.0]),
+        model="fake-2d",
+        version=2,
+    ))
+    asyncio.run(repo.write_vector_embedding(
+        ["vector-cooking"],
+        embedding_to_blob([0.0, 1.0]),
+        model="fake-2d",
+        version=2,
+    ))
+
+    rows = asyncio.run(repo.search_vector(
+        query_embedding=[0.99, 0.01],
+        user_id="u_vector",
+        access_levels=["shared"],
+        limit=2,
+    ))
+
+    assert [row["memory_id"] for row in rows] == ["vector-deploy", "vector-cooking"]
+    assert rows[0]["_route"] == "memory_vectors"
+    assert rows[0]["_score"] > rows[1]["_score"]
+    stats = asyncio.run(repo.get_stats())
+    assert stats["vector_search_enabled"] is True
+    assert stats["with_embedding"] == 2
+
+
+def test_repository_rebuild_vector_index_generates_missing_vectors(tmp_path, monkeypatch):
+    from agentmind.memory.dto import MemoryWriteCommand
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    asyncio.run(repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="rebuild-deploy",
+        content="部署端口 8765",
+        summary="部署端口",
+        user_id="u_rebuild",
+        access_level="shared",
+        embedding_version=1,
+    )))
+    asyncio.run(repo.write_raw_and_card(MemoryWriteCommand(
+        memory_id="rebuild-menu",
+        content="晚餐番茄鸡蛋",
+        summary="晚餐",
+        user_id="u_rebuild",
+        access_level="shared",
+        embedding_version=1,
+    )))
+
+    def fake_generate_embedding_sync(text, settings=None):
+        if "部署" in text:
+            return [1.0, 0.0]
+        return [0.0, 1.0]
+
+    monkeypatch.setattr(
+        "agentmind.memory.repository_sqlite.generate_embedding_sync",
+        fake_generate_embedding_sync,
+    )
+
+    rebuilt = asyncio.run(repo.rebuild_vector_index(
+        target_version=2,
+        model="fake-2d",
+        limit=10,
+    ))
+    rows = asyncio.run(repo.search_vector(
+        query_embedding=[1.0, 0.0],
+        user_id="u_rebuild",
+        limit=2,
+    ))
+    menu_rows = asyncio.run(repo.search_vector(
+        query_embedding=[0.0, 1.0],
+        user_id="u_rebuild",
+        limit=2,
+    ))
+
+    assert rebuilt == 2
+    assert [row["memory_id"] for row in rows] == ["rebuild-deploy"]
+    assert [row["memory_id"] for row in menu_rows] == ["rebuild-menu"]
 
 
 # ── read_conversation_turns ──

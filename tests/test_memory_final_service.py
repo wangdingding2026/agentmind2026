@@ -221,3 +221,37 @@ async def test_write_memory_keeps_raw_card_when_relation_enrichment_fails(tmp_pa
     assert calls == ["enrich-fail-1"]
     assert await repo.get_card("enrich-fail-1") is not None
     assert await repo.get_raw("enrich-fail-1", user_id="u_enrich_fail") is not None
+
+
+@pytest.mark.asyncio
+async def test_write_memory_persists_vector_when_embedding_is_available(tmp_path, monkeypatch):
+    """v1.0.0 写入记忆时应能形成真实向量索引；失败时仍由实现自行降级。"""
+    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
+    from agentmind.memory.service import MemoryService
+
+    class FakeEmbeddingProvider:
+        async def generate_embedding(self, content):
+            return [1.0, 0.0]
+
+    monkeypatch.setattr(
+        "agentmind.memory.pipeline.write_pipeline.MemoryEmbeddingProvider",
+        FakeEmbeddingProvider,
+    )
+
+    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
+    count = await MemoryService(repository=repo).write_memory({
+        "memory_id": "vector-runtime-1",
+        "content": "部署端口 8765 需要保留给 AgentMind 服务。",
+        "summary": "部署端口 8765",
+        "user_id": "u_vector_runtime",
+        "memory_type": "semantic",
+    })
+    rows = await repo.search_vector(
+        query_embedding=[1.0, 0.0],
+        user_id="u_vector_runtime",
+        limit=5,
+    )
+
+    assert count == 1
+    assert await repo.get_card("vector-runtime-1") is not None
+    assert [row["memory_id"] for row in rows] == ["vector-runtime-1"]

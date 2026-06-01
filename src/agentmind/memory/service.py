@@ -3,6 +3,7 @@
 import logging
 
 from agentmind.memory.dto import MemoryContext
+from agentmind.memory.provider import MemoryEmbeddingProvider
 from agentmind.memory.types import MemoryEntry, MemoryType
 from agentmind.services.config_service import ConfigService
 
@@ -355,13 +356,28 @@ class MemoryService:
             limit=max_candidates,
         )
         relation_rows = [self._card_row_to_search_dict(row) for row in relation_rows]
+        vector_rows = await self._search_vector_rows(
+            message,
+            user_id=user_id,
+            access_levels=["shared"],
+            exclude_conversation_id=exclude_conversation_id,
+            limit=max_candidates,
+            settings=settings,
+        )
         if keyword_rows:
             steps.append("keyword_cards")
+        if vector_rows:
+            steps.append("vector_cards")
         if recent_rows:
             steps.append("recent_cards")
         if relation_rows:
             steps.append("relation_cards")
-        rows = self._merge_retrieval_rows(keyword_rows, relation_rows, recent_rows)
+        rows = self._merge_retrieval_rows(
+            keyword_rows,
+            vector_rows,
+            relation_rows,
+            recent_rows,
+        )
         rows = self._dedupe_memory_rows(rows)
         rows = self._rank_retrieval_rows(rows)
         rows, reranked = await self._rerank_rows(message, rows, mem_cfg)
@@ -485,6 +501,36 @@ class MemoryService:
             steps=steps,
             truncated=truncated,
         )
+
+    async def _search_vector_rows(
+        self,
+        message: str,
+        *,
+        user_id: str,
+        access_levels: list[str],
+        exclude_conversation_id: str,
+        limit: int,
+        settings: dict,
+    ) -> list[dict]:
+        if not hasattr(self._repository, "search_vector"):
+            return []
+        if settings.get("embedding", {}).get("enabled") is False:
+            return []
+        try:
+            query_embedding = await MemoryEmbeddingProvider().generate_embedding(message)
+            if not query_embedding:
+                return []
+            rows = await self._repository.search_vector(
+                query_embedding=query_embedding,
+                user_id=user_id,
+                access_levels=access_levels,
+                exclude_conversation_id=exclude_conversation_id,
+                limit=limit,
+            )
+            return [self._card_row_to_search_dict(row) for row in rows]
+        except Exception as exc:
+            logger.debug("Vector retrieval failed: %s", exc)
+            return []
 
     @staticmethod
     def _dedupe_memory_rows(rows: list[dict]) -> list[dict]:

@@ -65,7 +65,7 @@ WebSocket 长连接，面板填写 App ID / Secret 即连。消息到达加 reac
 - 审计日志：路由决策、配置变更、记忆访问
 - 会话管理：`/new` 开启新会话，清空 Working Memory，关闭旧 conversation
 - 后台任务：每小时记忆清理、每 5 分钟流监听清理、每小时 workspace 过期清理
-- 记忆 Worker 调度器：归档、embedding 迁移、蒸馏和 importance 重算具备调度入口，部分深度富化能力仍按配置和依赖可用性启用
+- 记忆 Worker 调度器：归档、蒸馏和 importance 重算具备调度入口；embedding 启用时支持向量写入、语义检索和索引重建，默认使用纯 SQLite 保底，sqlite-vec 可用时保留加速入口
 
 ## API
 
@@ -92,5 +92,6 @@ Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5) / YAML / SSE
 ## v1 边界
 
 - AgentMind v1.0.0 是“稳定中枢版”：重点保证多入口路由、共享记忆、历史查询、任务记录、控制面板和基础编排可用。
-- 向量检索、深度关系图谱、自主任务拆解、自进化治理不是 v1 的强承诺能力，后续版本继续推进。
+- v1.0.0 已提供基础向量写入、语义检索和索引重建。默认不强制安装 `sqlite-vec`，网络受限环境会使用纯 SQLite 保底检索。
+- 深度关系图谱、自主任务拆解、自进化治理不是 v1 的强承诺能力，后续版本继续推进。
 - 版本提交前的验证基线是 `python -m compileall -q src tests` 和 `python -m pytest -q` 全量通过。

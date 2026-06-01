@@ -181,6 +181,36 @@ function formatAuditAction(action) {
   return labels[action] || action || '-';
 }
 
+function formatAuditObject(event) {
+  const payload = (event && event.payload) || {};
+  const area = payload.area || '';
+  const data = payload.data || {};
+
+  if (area === 'routes') return '路由规则';
+  if (area === 'agents') return 'Agent 配置';
+  if (area === 'orchestrations') return '编排计划';
+  if (area === 'settings') return formatSettingsAuditObject(data);
+  if (event && event.agent_id) return event.agent_id;
+  if (payload.component === 'CPE') return '上下文策略引擎';
+  if (event && event.trace_id) return event.trace_id;
+  return '-';
+}
+
+function formatSettingsAuditObject(data) {
+  const labels = [
+    ['feishu', '飞书通道配置'],
+    ['embedding', 'Embedding 配置'],
+    ['semantic_router', '语义路由配置'],
+    ['meta', 'Core LLM 配置'],
+    ['memory', '记忆保留配置'],
+    ['history', '任务保留配置'],
+  ];
+  const matched = labels
+    .filter(([key]) => Object.prototype.hasOwnProperty.call(data || {}, key))
+    .map(([, label]) => label);
+  return matched.join('、') || '未识别配置项';
+}
+
 function tagsHtml(tags) {
   return (tags || []).map(tag => '<span class="tag">' + escapeHtml(tag) + '</span>').join('');
 }
@@ -604,10 +634,11 @@ async function loadAuditWorkbench() {
   const data = await fetchAPI('/audit/events?' + params.toString());
   const events = (data && data.events) || [];
   $('audit-tbody').innerHTML = events.map(event => (
-    '<tr><td>' + escapeHtml(formatTime(event.created_at)) + '</td><td>' + escapeHtml(formatAuditModule(event.module)) +
+    '<tr><td>' + escapeHtml(formatTime(event.created_at)) + '</td><td>' + escapeHtml(formatAuditObject(event)) +
+    '</td><td>' + escapeHtml(formatAuditModule(event.module)) +
     '</td><td>' + escapeHtml(formatAuditAction(event.action)) + '</td><td>' + escapeHtml(event.agent_id || '-') +
     '</td><td>' + escapeHtml(formatRiskLevel(event.risk_level)) + '</td><td>' + escapeHtml(event.trace_id || '-') + '</td></tr>'
-  )).join('') || '<tr><td colspan="6" class="empty">暂无审计事件</td></tr>';
+  )).join('') || '<tr><td colspan="7" class="empty">暂无审计事件</td></tr>';
 }
 
 async function loadMemoryWorkbench() {

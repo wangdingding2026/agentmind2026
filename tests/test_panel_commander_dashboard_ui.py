@@ -122,6 +122,16 @@ def test_panel_commander_dashboard_localizes_user_visible_status_codes():
         assert text not in html
 
 
+def test_panel_audit_workbench_shows_specific_object_column():
+    html = _read(PANEL_HTML)
+    js = _read(PANEL_JS)
+
+    assert "<th>对象</th>" in html
+    assert "function formatAuditObject" in js
+    assert "Embedding 配置" in js
+    assert "系统设置" not in js
+
+
 def test_panel_commander_dashboard_js_uses_existing_service_adapters():
     js = _read(PANEL_JS)
 

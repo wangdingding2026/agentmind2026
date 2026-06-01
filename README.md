@@ -97,3 +97,5 @@ Python 3.10+ / FastAPI / Uvicorn / SQLite (WAL + FTS5) / YAML / SSE
 - v1.0.0 已提供基础向量写入、语义检索和索引重建。默认不强制安装 `sqlite-vec`，网络受限环境会使用纯 SQLite 保底检索。
 - 深度关系图谱、自主任务拆解、自进化治理不是 v1 的强承诺能力，后续版本继续推进。
 - 版本提交前的验证基线是 `python -m compileall -q src tests` 和 `python -m pytest -q` 全量通过。
+- 外部真实端到端验证（飞书、MCP、A2A、外部 LLM、Embedding API）已由用户在真实环境完成。
+- 正式发布前仍需执行安装/打包验收：`pip install -e .`、wheel 构建与安装、启动 `agentmind`、打开面板并确认静态资源加载正常。

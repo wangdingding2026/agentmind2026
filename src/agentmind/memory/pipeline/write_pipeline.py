@@ -203,6 +203,18 @@ class WritePipeline:
         except Exception as e:
             logger.debug("异步关系抽取失败: %s", e)
 
+        # 9. Team knowledge extraction. It is tied to canonical memory writes,
+        # not to external agents knowing AgentMind's internal schema.
+        try:
+            from agentmind.memory.components.knowledge_extractor import KnowledgeExtractor
+
+            source_memory_id = created_ids[0] if created_ids else entry.memory_id
+            item = await KnowledgeExtractor().extract(entry, source_memory_id)
+            if item:
+                await self._repository.write_knowledge_item(item)
+        except Exception as e:
+            logger.debug("团队知识沉淀失败: %s", e)
+
     async def _capacity_check(self):
         """容量检查：超过 max_entries 时 LRU 淘汰。"""
         try:

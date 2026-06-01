@@ -28,6 +28,7 @@ class ContextAssembler:
         core_memory_text: str,
         working_memory_rounds: list[dict],
         recall_results: list[SearchResult],
+        knowledge_items: list[dict] | None = None,
         max_bytes: int | None = None,
     ) -> AssembledContext:
         limit = max_bytes or self.max_bytes
@@ -45,10 +46,20 @@ class ContextAssembler:
         working = "\n---\n".join(working_parts)
         working = self._truncate_bytes(working, 2048)
 
-        # 3. Recall 去重 + 截断
+        # 3. Team Knowledge 格式化（≤2KB）
+        knowledge_parts = []
+        for item in (knowledge_items or [])[:10]:
+            knowledge_type = item.get("knowledge_type") or "knowledge"
+            title = (item.get("title") or "")[:200]
+            content = (item.get("content") or "")[:500]
+            if title and content:
+                knowledge_parts.append(f"[{knowledge_type}] {title}\n{content}")
+        knowledge = self._truncate_bytes("\n---\n".join(knowledge_parts), 2048)
+
+        # 4. Recall 去重 + 截断
         deduped = self._dedup_by_hash(recall_results)
 
-        # 4. Recall 格式化
+        # 5. Recall 格式化
         recall_parts = []
         for r in deduped:
             e = r.entry
@@ -65,6 +76,8 @@ class ContextAssembler:
             sections.append(f"[用户画像]\n{core}")
         if working.strip():
             sections.append(f"[近期对话]\n{working}")
+        if knowledge.strip():
+            sections.append(f"[团队知识库]\n{knowledge}")
         if recall.strip():
             sections.append(f"[相关记忆]\n{recall}")
 
@@ -83,6 +96,8 @@ class ContextAssembler:
                     sections.append(f"[用户画像]\n{core}")
                 if working.strip():
                     sections.append(f"[近期对话]\n{working}")
+                if knowledge.strip():
+                    sections.append(f"[团队知识库]\n{knowledge}")
                 if recall.strip():
                     sections.append(f"[相关记忆]\n{recall}")
                 full = "\n\n".join(sections)

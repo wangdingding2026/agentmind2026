@@ -1423,6 +1423,157 @@ class SqliteMemoryRepository:
         except Exception:
             return "sqlite"
 
+    async def write_knowledge_item(self, item: dict) -> dict | None:
+        return await asyncio.to_thread(self._write_knowledge_item_sync, item)
+
+    def _write_knowledge_item_sync(self, item: dict) -> dict | None:
+        title = (item.get("title") or "").strip()
+        content = (item.get("content") or "").strip()
+        knowledge_type = (item.get("knowledge_type") or "").strip()
+        if not title or not content or not knowledge_type:
+            return None
+        knowledge_id = item.get("knowledge_id") or f"kb-{uuid.uuid4().hex[:16]}"
+        user_id = item.get("user_id", "")
+        status = item.get("status") or "pending"
+        if status not in {"active", "pending", "archived"}:
+            status = "pending"
+        confidence = _safe_float(item.get("confidence"), 0.0)
+        tags_json = json.dumps(item.get("tags") or [], ensure_ascii=False)
+        conflicts = item.get("conflicts_with") or []
+        now = _now_sqlite()
+
+        conn = self._get_conn()
+        try:
+            conflict_rows = conn.execute(
+                """SELECT knowledge_id, content FROM knowledge_items
+                   WHERE user_id=? AND knowledge_type=? AND title=? AND status='active'
+                     AND knowledge_id != ?""",
+                (user_id, knowledge_type, title, knowledge_id),
+            ).fetchall()
+            for row in conflict_rows:
+                if (row["content"] or "").strip() != content:
+                    conflicts.append(row["knowledge_id"])
+                    status = "pending"
+
+            conflicts_json = json.dumps(conflicts, ensure_ascii=False)
+            conn.execute(
+                """INSERT INTO knowledge_items
+                   (knowledge_id, user_id, knowledge_type, title, content,
+                    source_memory_id, source_agent, source_task_id, confidence,
+                    status, evidence, conflicts_with, tags, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(knowledge_id) DO UPDATE SET
+                       user_id=excluded.user_id,
+                       knowledge_type=excluded.knowledge_type,
+                       title=excluded.title,
+                       content=excluded.content,
+                       source_memory_id=excluded.source_memory_id,
+                       source_agent=excluded.source_agent,
+                       source_task_id=excluded.source_task_id,
+                       confidence=excluded.confidence,
+                       status=excluded.status,
+                       evidence=excluded.evidence,
+                       conflicts_with=excluded.conflicts_with,
+                       tags=excluded.tags,
+                       updated_at=excluded.updated_at""",
+                (
+                    knowledge_id,
+                    user_id,
+                    knowledge_type,
+                    title,
+                    content,
+                    item.get("source_memory_id", ""),
+                    item.get("source_agent", ""),
+                    item.get("source_task_id", ""),
+                    confidence,
+                    status,
+                    item.get("evidence", ""),
+                    conflicts_json,
+                    tags_json,
+                    item.get("created_at") or now,
+                    now,
+                ),
+            )
+            conn.commit()
+            return self._get_knowledge_item_sync(knowledge_id, conn=conn)
+        finally:
+            conn.close()
+
+    async def search_knowledge(
+        self,
+        *,
+        query: str = "",
+        user_id: str = "",
+        statuses: list[str] | None = None,
+        knowledge_types: list[str] | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        return await asyncio.to_thread(
+            self._search_knowledge_sync,
+            query,
+            user_id,
+            statuses or ["active"],
+            knowledge_types or [],
+            limit,
+        )
+
+    def _search_knowledge_sync(
+        self,
+        query: str,
+        user_id: str,
+        statuses: list[str],
+        knowledge_types: list[str],
+        limit: int,
+    ) -> list[dict]:
+        if limit <= 0:
+            return []
+        clauses = []
+        params: list = []
+        if user_id:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        if statuses:
+            placeholders = ",".join("?" for _ in statuses)
+            clauses.append(f"status IN ({placeholders})")
+            params.extend(statuses)
+        if knowledge_types:
+            placeholders = ",".join("?" for _ in knowledge_types)
+            clauses.append(f"knowledge_type IN ({placeholders})")
+            params.extend(knowledge_types)
+        if query:
+            term_clauses = []
+            for term in _query_terms(query):
+                like = f"%{term}%"
+                term_clauses.append("(title LIKE ? OR content LIKE ? OR evidence LIKE ?)")
+                params.extend([like, like, like])
+            clauses.append(f"({' OR '.join(term_clauses)})")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                f"""SELECT * FROM knowledge_items
+                    {where}
+                    ORDER BY confidence DESC, updated_at DESC, knowledge_id ASC
+                    LIMIT ?""",
+                params,
+            ).fetchall()
+            items = [self._row_to_knowledge(row) for row in rows]
+            for item in items:
+                item["_score"] = self._score_knowledge(item, query)
+                item["_route"] = "knowledge_items"
+            items.sort(
+                key=lambda item: (
+                    -item["_score"],
+                    self._created_at_desc_sort_key(item.get("updated_at", "")),
+                    item.get("knowledge_id", ""),
+                )
+            )
+            return items[:limit]
+        finally:
+            conn.close()
+
     async def write_relations(
         self, user_id: str, relations: list[tuple[str, str, str, str, float]]
     ) -> None:
@@ -1519,6 +1670,21 @@ class SqliteMemoryRepository:
             if owns_conn:
                 conn.close()
 
+    def _get_knowledge_item_sync(self, knowledge_id: str, conn=None) -> dict | None:
+        owns_conn = conn is None
+        conn = conn or self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT * FROM knowledge_items WHERE knowledge_id=?",
+                (knowledge_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._row_to_knowledge(row)
+        finally:
+            if owns_conn:
+                conn.close()
+
     @staticmethod
     def _row_to_card(row) -> dict:
         card = dict(row)
@@ -1533,6 +1699,16 @@ class SqliteMemoryRepository:
                 card[key] = fallback
         card.setdefault("source_kind", (card.get("source_refs") or {}).get("source_kind", "task"))
         return card
+
+    @staticmethod
+    def _row_to_knowledge(row) -> dict:
+        item = dict(row)
+        for key in ("tags", "conflicts_with"):
+            try:
+                item[key] = json.loads(item.get(key) or "[]")
+            except (json.JSONDecodeError, TypeError):
+                item[key] = []
+        return item
 
     def _score_card(self, card: dict, query: str) -> float:
         score = 0.0
@@ -1553,6 +1729,25 @@ class SqliteMemoryRepository:
         except (TypeError, ValueError):
             pass
         score += self._card_recency_tiebreaker(card.get("created_at", ""))
+        return score
+
+    def _score_knowledge(self, item: dict, query: str) -> float:
+        score = 1.0
+        text = query.strip().lower()
+        title = (item.get("title") or "").lower()
+        content = (item.get("content") or "").lower()
+        if text:
+            score = 0.0
+            for term in _query_terms(query):
+                lowered = term.lower()
+                if lowered in title:
+                    score += 1.5
+                elif lowered in content:
+                    score += 1.0
+        try:
+            score += float(item.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            pass
         return score
 
     @staticmethod
@@ -1623,3 +1818,10 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if left_norm <= 0 or right_norm <= 0:
         return 0.0
     return dot / (math.sqrt(left_norm) * math.sqrt(right_norm))
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default

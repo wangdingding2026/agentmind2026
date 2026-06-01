@@ -335,6 +335,11 @@ class MemoryService:
 
         max_candidates = max(limit, mem_cfg.get("retrieval_max_candidates", limit))
         exclude_conversation_id = self.get_active_conversation_id(user_id) if working else ""
+        knowledge_rows = await self._search_knowledge_rows(
+            message,
+            user_id=user_id,
+            limit=max_candidates,
+        )
         keyword_rows = await self.search_memory(
             query=message,
             user_id=user_id,
@@ -364,6 +369,8 @@ class MemoryService:
             limit=max_candidates,
             settings=settings,
         )
+        if knowledge_rows:
+            steps.append("knowledge_items")
         if keyword_rows:
             steps.append("keyword_cards")
         if vector_rows:
@@ -411,6 +418,7 @@ class MemoryService:
                 core_text,
                 working,
                 recall_results,
+                knowledge_items=knowledge_rows,
                 max_bytes=mem_cfg.get("context_max_bytes", 8192),
             )
             assembled_context = assembled.full_text
@@ -501,6 +509,26 @@ class MemoryService:
             steps=steps,
             truncated=truncated,
         )
+
+    async def _search_knowledge_rows(
+        self,
+        message: str,
+        *,
+        user_id: str,
+        limit: int,
+    ) -> list[dict]:
+        if not hasattr(self._repository, "search_knowledge"):
+            return []
+        try:
+            return await self._repository.search_knowledge(
+                query=message,
+                user_id=user_id,
+                statuses=["active"],
+                limit=limit,
+            )
+        except Exception as exc:
+            logger.debug("Knowledge retrieval failed: %s", exc)
+            return []
 
     async def _search_vector_rows(
         self,

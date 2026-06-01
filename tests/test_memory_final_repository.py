@@ -23,6 +23,7 @@ def test_initialize_memory_storage_creates_only_canonical_tables(tmp_path):
         "raw_memory",
         "memory_cards",
         "memory_vectors",
+        "knowledge_items",
         "working_memory",
         "core_memory",
         "memory_relations",

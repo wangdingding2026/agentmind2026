@@ -65,6 +65,24 @@ def ensure_canonical_tables(conn) -> None:
             updated_at TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS knowledge_items (
+            knowledge_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT '',
+            knowledge_type TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            source_memory_id TEXT NOT NULL DEFAULT '',
+            source_agent TEXT NOT NULL DEFAULT '',
+            source_task_id TEXT NOT NULL DEFAULT '',
+            confidence REAL NOT NULL DEFAULT 0.0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            evidence TEXT NOT NULL DEFAULT '',
+            conflicts_with TEXT NOT NULL DEFAULT '[]',
+            tags TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS working_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -152,6 +170,9 @@ def ensure_canonical_tables(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_raw ON memory_cards(raw_memory_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_vectors_user ON memory_vectors(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_vectors_version ON memory_vectors(version)",
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_user_status ON knowledge_items(user_id, status, updated_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_type_status ON knowledge_items(knowledge_type, status)",
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_source_memory ON knowledge_items(source_memory_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_conversation ON memory_cards(conversation_id)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_session ON memory_cards(session_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_memory_cards_source_kind ON memory_cards(source_kind, created_at DESC)",

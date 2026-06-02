@@ -254,7 +254,6 @@ class MemoryService:
         time_range_start: str = "",
         time_range_end: str = "",
         limit: int = 50,
-        include_history_answers: bool = False,
     ) -> list[dict]:
         return await self._repository.read_conversation_turns(
             user_id=user_id,
@@ -262,7 +261,6 @@ class MemoryService:
             time_range_start=time_range_start,
             time_range_end=time_range_end,
             limit=limit,
-            include_history_answers=include_history_answers,
         )
 
     # ── 检索上下文 ──

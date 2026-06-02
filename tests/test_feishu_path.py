@@ -302,6 +302,129 @@ class TestRouteStream:
 
 class TestRunDiscussion:
     @pytest.mark.asyncio
+    async def test_discussion_memory_ids_are_unique_across_discussions_for_same_user(self, monkeypatch):
+        """同一用户多场讨论的第 1 轮都必须写入唯一记忆，不能因 turn 重置冲突。"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        memory_calls = []
+
+        async def _capture_write_task(
+            trace_id,
+            agent_id,
+            user_message,
+            result,
+            user_id="",
+            source_kind="conversation_turn",
+        ):
+            memory_calls.append({
+                "trace_id": trace_id,
+                "agent_id": agent_id,
+                "user_message": user_message,
+                "result": result,
+                "user_id": user_id,
+                "source_kind": source_kind,
+            })
+
+        async def _fake_send(text):
+            if text.startswith("【AgentA】"):
+                _session.stop_discussion("u1")
+
+        async def _fake_stream(msg):
+            yield StreamEvent(StreamEventType.CONTENT, "A的观点")
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _fake_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        ex_b.execute_stream = _fake_stream
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.MemoryWriter.write_task", _capture_write_task)
+
+        _session.start_discussion("u1")
+        await _run_discussion("第一场讨论", ["a", "b"], "u1", reg, _fake_send)
+        _session.start_discussion("u1")
+        await _run_discussion("第二场讨论", ["a", "b"], "u1", reg, _fake_send)
+
+        turn_calls = [
+            call for call in memory_calls
+            if call["user_message"].startswith("讨论：")
+        ]
+        trace_ids = [call["trace_id"] for call in turn_calls]
+        assert len(trace_ids) == 2
+        assert len(set(trace_ids)) == 2
+        assert [call["user_message"] for call in turn_calls] == [
+            "讨论：第一场讨论（第1轮）",
+            "讨论：第二场讨论（第1轮）",
+        ]
+        assert all(call["agent_id"] == "a" for call in turn_calls)
+
+    @pytest.mark.asyncio
+    async def test_discussion_summary_is_written_to_unified_memory(self, monkeypatch):
+        """讨论总结也必须进入统一记忆库，确保“今天聊过什么”可总结到收敛结论。"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        memory_calls = []
+
+        async def _capture_write_task(
+            trace_id,
+            agent_id,
+            user_message,
+            result,
+            user_id="",
+            source_kind="conversation_turn",
+        ):
+            memory_calls.append({
+                "trace_id": trace_id,
+                "agent_id": agent_id,
+                "user_message": user_message,
+                "result": result,
+                "user_id": user_id,
+                "source_kind": source_kind,
+            })
+
+        async def _fake_send(text):
+            if text.startswith("【AgentA】"):
+                _session.stop_discussion("u1")
+
+        async def _fake_stream(msg):
+            if "总结" in msg:
+                yield StreamEvent(StreamEventType.CONTENT, "总结内容")
+            else:
+                yield StreamEvent(StreamEventType.CONTENT, "A的观点")
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _fake_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        ex_b.execute_stream = _fake_stream
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr(
+            "agentmind.services.routing_service.MemoryWriter.write_task", _capture_write_task)
+
+        _session.start_discussion("u1")
+        await _run_discussion("总结应入库", ["a", "b"], "u1", reg, _fake_send)
+
+        summary_calls = [
+            call for call in memory_calls
+            if call["user_message"] == "讨论总结：总结应入库"
+        ]
+        assert len(summary_calls) == 1
+        assert summary_calls[0]["agent_id"] == "a"
+        assert summary_calls[0]["result"] == "总结内容"
+        assert summary_calls[0]["user_id"] == "u1"
+
+    @pytest.mark.asyncio
     async def test_single_turn_discussion(self, monkeypatch):
         """讨论循环：Agent 轮流发言一轮后停止"""
         from agentmind.services.routing_service import _run_discussion

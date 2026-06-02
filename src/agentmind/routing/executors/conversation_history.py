@@ -2,11 +2,12 @@
 
 当 semantic_intent.intent == conversation_history 时使用。
 根据 SemanticIntent 的 time_scope / current_session / explicit_date 决定查询范围，
-通过 read_conversation_turns 读取结构化问答轮次，输出统一的 问：/答： 格式。
+通过 read_conversation_turns 读取结构化问答轮次，再交给 Core LLM 生成总结。
 """
 import logging
 import re as _re
 
+from agentmind.core.core_llm import core_llm_chat
 from agentmind.routing.context import RoutingDecision
 from agentmind.routing.executors.base import ExecutorBase
 from agentmind.services.time_service import local_date_key, local_day_bounds, to_local_display
@@ -15,7 +16,7 @@ logger = logging.getLogger("agentmind")
 
 
 class ConversationHistoryExecutor(ExecutorBase):
-    """历史查询执行器：输出结构化 Q&A，不输出话题索引。"""
+    """历史查询执行器：基于真实历史材料生成自然语言总结。"""
 
     async def run_json(self, decision: RoutingDecision, trace_id: str, user_id: str):
         from fastapi.responses import JSONResponse
@@ -23,7 +24,7 @@ class ConversationHistoryExecutor(ExecutorBase):
         reply = await self.build_reply(decision, user_id)
         from agentmind.storage.db import record_task_update
         await record_task_update(trace_id, status="executing", routed_agent="agentmind")
-        await self._record_success(trace_id, "agentmind", decision.context.raw_message, reply, user_id, source_kind="conversation_history_answer")
+        await self._record_success(trace_id, "agentmind", decision.context.raw_message, reply, user_id)
 
         return JSONResponse(content={
             "agent_id": "agentmind",
@@ -55,7 +56,7 @@ class ConversationHistoryExecutor(ExecutorBase):
             "status": "completed", "trace_id": trace_id, "execution_time_ms": 0,
         })}
 
-        await self._record_success(trace_id, "agentmind", decision.context.raw_message, reply, user_id, source_kind="conversation_history_answer")
+        await self._record_success(trace_id, "agentmind", decision.context.raw_message, reply, user_id)
 
     async def run_text(self, decision: RoutingDecision, trace_id: str, user_id: str):
         from agentmind.services.task_service import TaskService
@@ -66,7 +67,7 @@ class ConversationHistoryExecutor(ExecutorBase):
 
         await TaskService().record_partial_output(trace_id, agent_id="agentmind", content=reply, chunk_index=1)
         yield reply
-        await self._record_success(trace_id, "agentmind", decision.context.raw_message, reply, user_id, source_kind="conversation_history_answer")
+        await self._record_success(trace_id, "agentmind", decision.context.raw_message, reply, user_id)
 
     # ── 核心逻辑 ──
 
@@ -77,7 +78,7 @@ class ConversationHistoryExecutor(ExecutorBase):
 
         time_scope = intent.time_scope
 
-        # 当前 session：优先 Working Memory，再回退 read_conversation_turns
+        # 当前 session：优先 canonical memory，Working Memory 只做兜底。
         if intent.current_session or time_scope == "current_session":
             return await self._reply_current_session(decision, user_id)
 
@@ -90,26 +91,46 @@ class ConversationHistoryExecutor(ExecutorBase):
             try:
                 from agentmind.memory.service import MemoryService
                 svc = MemoryService()
-                rounds = svc.get_working_memory(uid, limit=20)
-                if rounds:
-                    return self._format_qa_from_wm(rounds, "当前会话的对话记录")
-
-                # Working Memory 空，尝试用 conversation_id 查 turns
-                conv_id = svc.get_active_conversation_id(uid) or ""
-                if conv_id:
-                    turns = await svc.read_conversation_turns(
-                        user_id=uid,
-                        conversation_id=conv_id,
-                    )
-                    if turns:
-                        return self._format_qa_from_turns(turns, "当前会话的对话记录")
             except Exception:
-                pass
+                svc = None
+
+            if svc is not None:
+                try:
+                    conv_id = svc.get_active_conversation_id(uid) or ""
+                    if conv_id:
+                        turns = await svc.read_conversation_turns(
+                            user_id=uid,
+                            conversation_id=conv_id,
+                        )
+                        if turns:
+                            return await self._summarize_records(
+                                decision,
+                                self._records_from_turns(turns),
+                                "当前会话的对话记录",
+                            )
+                except Exception:
+                    pass
+
+                try:
+                    rounds = svc.get_working_memory(uid, limit=20)
+                    if rounds:
+                        records = self._records_from_wm(rounds)
+                        return await self._summarize_records(
+                            decision,
+                            records,
+                            "当前会话的对话记录",
+                        )
+                except Exception:
+                    pass
 
         # 最后回退到 memories
         memories = decision.context.memories if decision.context else []
         if memories:
-            return self._format_qa_from_memories(memories, "当前会话的对话记录")
+            return await self._summarize_records(
+                decision,
+                self._records_from_memories(memories),
+                "当前会话的对话记录",
+            )
         return "当前会话还没有任何对话记录。"
 
     async def _reply_from_turns(self, decision: RoutingDecision, user_id: str, time_scope: str) -> str:
@@ -119,7 +140,11 @@ class ConversationHistoryExecutor(ExecutorBase):
         if not uid:
             memories = decision.context.memories if decision.context else []
             if memories:
-                return self._format_qa_from_memories(memories, label)
+                return await self._summarize_records(
+                    decision,
+                    self._records_from_memories(memories),
+                    label,
+                )
             return f"没有找到{label}。"
 
         # 计算时间范围
@@ -133,14 +158,22 @@ class ConversationHistoryExecutor(ExecutorBase):
                 time_range_end=time_range_end,
             )
             if turns:
-                return self._format_qa_from_turns(turns, label)
+                return await self._summarize_records(
+                    decision,
+                    self._records_from_turns(turns),
+                    label,
+                )
         except Exception:
             pass
 
         # 回退到 memories
         memories = decision.context.memories if decision.context else []
         if memories:
-            return self._format_qa_from_memories(memories, label)
+            return await self._summarize_records(
+                decision,
+                self._records_from_memories(memories),
+                label,
+            )
         return f"没有找到{label}。"
 
     # ── 时间范围 ──
@@ -181,68 +214,130 @@ class ConversationHistoryExecutor(ExecutorBase):
                     pass
         return "", ""
 
-    # ── 格式化 ──
+    # ── 总结 ──
 
-    def _format_qa_from_wm(self, rounds: list[dict], header: str) -> str:
-        """从 Working Memory rounds 格式化 Q&A。"""
-        lines = [f"{header}："]
-        for i, r in enumerate(rounds, 1):
-            user_msg = (r.get("user") or "").strip()
-            assistant_msg = (r.get("assistant") or "").strip()
-            ts = to_local_display(r.get("ts") or "")
-            lines.append(f"\n{i}. {ts}")
-            lines.append(f"   问：{user_msg}")
-            if assistant_msg:
-                lines.append(f"   答：{assistant_msg}")
+    async def _summarize_records(
+        self,
+        decision: RoutingDecision,
+        records: list[dict],
+        label: str,
+    ) -> str:
+        if not records:
+            return f"没有找到{label}。"
+
+        material = self._build_summary_material(records)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是 AgentMind 的历史记录总结器。只能基于用户提供的历史记录材料总结，"
+                    "不要编造材料外的信息。用户想知道聊过什么时，输出主题化总结，"
+                    "不要机械罗列每一轮问答。需要保留涉及的 Agent 或说话来源。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"用户问题：{decision.context.raw_message if decision.context else ''}\n"
+                    f"查询范围：{label}\n\n"
+                    f"历史记录材料：\n{material}\n\n"
+                    "请用中文总结主要话题、关键结论和涉及的 Agent。"
+                ),
+            },
+        ]
+        try:
+            reply = await core_llm_chat(messages, temperature=0.2)
+            if reply and reply.strip():
+                return reply.strip()
+        except Exception:
+            logger.debug("历史记录 LLM 总结失败", exc_info=True)
+        return self._fallback_topic_summary(records, label)
+
+    @staticmethod
+    def _build_summary_material(records: list[dict]) -> str:
+        lines = []
+        for i, record in enumerate(records[:80], 1):
+            ts = to_local_display(record.get("created_at") or "")
+            agent = record.get("source_agent") or "unknown"
+            source_kind = record.get("source_kind") or "conversation_turn"
+            question = (record.get("question") or "").strip()
+            answer = (record.get("answer") or "").strip()
+            lines.append(
+                f"{i}. 时间：{ts}\n"
+                f"   来源：{agent}\n"
+                f"   类型：{source_kind}\n"
+                f"   用户/主题：{question}\n"
+                f"   回复/内容：{answer}"
+            )
         return "\n".join(lines)
 
-    def _format_qa_from_turns(self, turns: list[dict], header: str) -> str:
-        """从 read_conversation_turns 结构化轮次格式化 Q&A。"""
+    @staticmethod
+    def _fallback_topic_summary(records: list[dict], label: str) -> str:
         agents = list(dict.fromkeys(
-            t.get("source_agent", "") for t in turns if t.get("source_agent")
+            r.get("source_agent", "") for r in records if r.get("source_agent")
         ))
-
-        lines = [f"{header}："]
+        topics = []
+        for record in records:
+            question = (record.get("question") or "").strip()
+            if question and question not in topics:
+                topics.append(question)
+            if len(topics) >= 5:
+                break
+        lines = [f"{label}摘要："]
+        dates = list(dict.fromkeys(
+            local_date_key(r.get("created_at") or "")
+            for r in records
+            if r.get("created_at")
+        ))
+        if dates:
+            lines.append(f"涉及日期：{', '.join(dates[:3])}")
         if agents:
             lines.append(f"涉及 Agent：{', '.join(agents)}")
-
-        for i, t in enumerate(turns, 1):
-            question = (t.get("question") or "").strip()
-            answer = (t.get("answer") or "").strip()
-            agent = t.get("source_agent", "")
-            ts = to_local_display(t.get("created_at") or "")
-
-            lines.append(f"\n{i}. {ts} [{agent}]")
-            lines.append(f"   问：{question}")
-            if answer:
-                lines.append(f"   答：{answer}")
-
+        if topics:
+            lines.append("主要内容：")
+            for i, topic in enumerate(topics, 1):
+                lines.append(f"{i}. {topic}")
         return "\n".join(lines)
 
-    def _format_qa_from_memories(self, memories: list[dict], header: str) -> str:
-        """从 memories 列表格式化 Q&A（回退路径）。"""
-        agents = list(dict.fromkeys(
-            m.get("source_agent", "") for m in memories if m.get("source_agent")
-        ))
+    # ── 结构化记录转换 ──
 
-        lines = [f"{header}："]
-        if agents:
-            lines.append(f"涉及 Agent：{', '.join(agents)}")
+    def _records_from_wm(self, rounds: list[dict]) -> list[dict]:
+        records = []
+        for r in rounds:
+            records.append({
+                "created_at": r.get("ts") or "",
+                "source_agent": "working_memory",
+                "source_kind": "working_memory",
+                "question": (r.get("user") or "").strip(),
+                "answer": (r.get("assistant") or "").strip(),
+            })
+        return records
 
-        for i, m in enumerate(memories, 1):
-            content = (m.get("content") or "").strip()
+    def _records_from_turns(self, turns: list[dict]) -> list[dict]:
+        return [
+            {
+                "created_at": t.get("created_at") or "",
+                "source_agent": t.get("source_agent") or "",
+                "source_kind": t.get("source_kind") or "conversation_turn",
+                "question": (t.get("question") or "").strip(),
+                "answer": (t.get("answer") or "").strip(),
+            }
+            for t in turns
+        ]
+
+    def _records_from_memories(self, memories: list[dict]) -> list[dict]:
+        records = []
+        for m in memories:
             summary = (m.get("summary") or "").strip()
-            agent = m.get("source_agent", "")
-            ts = to_local_display(m.get("created_at") or "")
-
             answer = _re.sub(r'^\[[^\]]+\]\s*', '', summary)
-
-            lines.append(f"\n{i}. {ts} [{agent}]")
-            lines.append(f"   问：{content}")
-            if answer:
-                lines.append(f"   答：{answer}")
-
-        return "\n".join(lines)
+            records.append({
+                "created_at": m.get("created_at") or "",
+                "source_agent": m.get("source_agent") or "",
+                "source_kind": m.get("source_kind") or "conversation_turn",
+                "question": (m.get("content") or "").strip(),
+                "answer": answer,
+            })
+        return records
 
     @staticmethod
     def _format_no_records(scope: str) -> str:

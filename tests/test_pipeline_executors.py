@@ -190,8 +190,8 @@ class TestExecutorBase:
         assert error is None
 
     @pytest.mark.asyncio
-    async def test_agentmind_self_reply_skips_task_memory_write(self, monkeypatch):
-        """agentmind 自答不写入任务记忆（避免自循环）。"""
+    async def test_agentmind_self_reply_writes_task_memory(self, monkeypatch):
+        """agentmind 自答写入统一任务记忆。"""
         calls = []
 
         async def fake_record_task_end(*args, **kwargs):
@@ -217,7 +217,51 @@ class TestExecutorBase:
             "u_self",
         )
 
-        assert calls == []  # agentmind 不写入任务记忆
+        assert calls == [{
+            "trace_id": "tr-self",
+            "agent_id": "agentmind",
+        }]
+
+    @pytest.mark.asyncio
+    async def test_agentmind_success_writes_task_memory(self, monkeypatch):
+        """所有成功回复都进入统一记忆库，包括 agentmind 自答。"""
+        calls = []
+
+        async def fake_record_task_end(*args, **kwargs):
+            return None
+
+        class FakeMemoryWriter:
+            @staticmethod
+            async def write_task(trace_id, agent_id, user_message, result, user_id="", source_kind="conversation_turn"):
+                calls.append({
+                    "trace_id": trace_id,
+                    "agent_id": agent_id,
+                    "user_message": user_message,
+                    "result": result,
+                    "user_id": user_id,
+                    "source_kind": source_kind,
+                })
+
+        monkeypatch.setattr("agentmind.routing.executors.base.record_task_end", fake_record_task_end)
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter", FakeMemoryWriter)
+
+        executor = ExecutorBase(_mock_registry({}))
+        await executor._record_success(
+            "tr-self",
+            "agentmind",
+            "你是谁",
+            "我是 AgentMind",
+            "u_self",
+        )
+
+        assert calls == [{
+            "trace_id": "tr-self",
+            "agent_id": "agentmind",
+            "user_message": "你是谁",
+            "result": "我是 AgentMind",
+            "user_id": "u_self",
+            "source_kind": "conversation_turn",
+        }]
 
 
 # ── SelfReplyExecutor ──
@@ -252,8 +296,8 @@ class TestSelfReplyExecutor:
         assert "抱歉" in reply
 
     @pytest.mark.asyncio
-    async def test_self_reply_skips_memory_write_for_agentmind(self, monkeypatch):
-        """agentmind 自答不通过 MemoryWriter 写入记忆（避免自循环）。"""
+    async def test_self_reply_writes_memory_for_agentmind_legacy_assertion(self, monkeypatch):
+        """agentmind 自答通过 MemoryWriter 写入统一记忆。"""
         write_task_called = False
 
         async def fake_write_task(*args, **kwargs):
@@ -276,7 +320,35 @@ class TestSelfReplyExecutor:
             chunks.append(chunk)
 
         assert chunks == ["self reply"]
-        assert not write_task_called  # agentmind 不写任务记忆
+        assert write_task_called
+
+    @pytest.mark.asyncio
+    async def test_self_reply_writes_memory_for_agentmind(self, monkeypatch):
+        """agentmind 普通自答也通过统一 MemoryWriter 写入记忆。"""
+        write_calls = []
+
+        async def fake_write_task(*args, **kwargs):
+            write_calls.append((args, kwargs))
+
+        decision = _make_decision(
+            agent_id="agentmind",
+            reply_text="self reply",
+            context=_make_ctx(raw_message="hello"),
+        )
+
+        monkeypatch.setattr("agentmind.routing.executors.self_reply.record_task_update", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.base.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.routing.executors.base.MemoryWriter.write_task", fake_write_task)
+
+        executor = SelfReplyExecutor(_mock_registry({}))
+        chunks = []
+        async for chunk in executor.run_text(decision, "t1", "u1"):
+            chunks.append(chunk)
+
+        assert chunks == ["self reply"]
+        assert len(write_calls) == 1
+        args, kwargs = write_calls[0]
+        assert args[:5] == ("t1", "agentmind", "hello", "self reply", "u1")
 
     @pytest.mark.asyncio
     async def test_run_json(self, monkeypatch):
@@ -846,7 +918,7 @@ class TestRoutingPipeline:
             intent=SemanticIntentType.CONVERSATION_HISTORY,
             confidence=0.92,
             time_scope="today",
-            requested_format="qa_summary",
+            requested_format="topic_summary",
         )
 
         class _SemanticStrategy(RoutingStrategy):

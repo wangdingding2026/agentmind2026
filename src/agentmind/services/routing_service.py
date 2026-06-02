@@ -26,6 +26,7 @@ from agentmind.routing.executors.single_agent import SingleAgentExecutor
 from agentmind.routing.pipeline import RoutingPipeline
 from agentmind.routing.protocol_router import ProtocolRouter
 from agentmind.routing.semantic_intent import SemanticIntentType
+from agentmind.routing.side_effects.memory_writer import MemoryWriter
 from agentmind.routing.side_effects.session_registry import session_registry as _session
 from agentmind.routing.side_effects.trace_recorder import TraceRecorder
 from agentmind.services.audit_service import AuditService
@@ -529,18 +530,13 @@ async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_
         turn_trace_id = generate_trace_id()
         await record_task_start(turn_trace_id, f"讨论：{topic}（第{turn}轮）")
         await record_task_end(turn_trace_id, "completed", agent.capability.id, result=response, execution_time_ms=0)
-        try:
-            await MemoryService().write_memory({
-                "memory_id": f"discuss-{user_id}-t{turn}",
-                "content": f"讨论：{topic}（第{turn}轮）",
-                "summary": f"[{agent.capability.name}] {response[:500]}",
-                "source_agent": agent.capability.id,
-                "source_task_id": turn_trace_id,
-                "tags": ["discussion", f"user:{user_id}"],
-                "user_id": user_id,
-            })
-        except Exception:
-            pass
+        await MemoryWriter.write_task(
+            turn_trace_id,
+            agent.capability.id,
+            f"讨论：{topic}（第{turn}轮）",
+            response,
+            user_id,
+        )
         if not _session.is_discussion_active(user_id):
             break
         await _asyncio_impl.sleep(3)
@@ -567,6 +563,13 @@ async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_
             sum_trace_id = generate_trace_id()
             await record_task_start(sum_trace_id, f"讨论总结：{topic}")
             await record_task_end(sum_trace_id, "completed", summarizer.capability.id, result=summary_text, execution_time_ms=0)
+            await MemoryWriter.write_task(
+                sum_trace_id,
+                summarizer.capability.id,
+                f"讨论总结：{topic}",
+                summary_text,
+                user_id,
+            )
 
     await send_msg(f"讨论结束，共 {turn} 轮发言")
     _session.end_discussion(user_id)

@@ -14,7 +14,7 @@ def test_semantic_intent_from_valid_llm_json():
         "time_scope": "today",
         "current_session": False,
         "agent_filter": "",
-        "requested_format": "qa_summary",
+        "requested_format": "topic_summary",
         "reason": "用户询问今天聊过什么",
     }
 
@@ -26,7 +26,7 @@ def test_semantic_intent_from_valid_llm_json():
     assert intent.time_scope == "today"
     assert intent.current_session is False
     assert intent.agent_filter == ""
-    assert intent.requested_format == "qa_summary"
+    assert intent.requested_format == "topic_summary"
     assert intent.reason == "用户询问今天聊过什么"
 
 
@@ -142,7 +142,7 @@ async def test_semantic_intent_strategy_routes_history_to_agentmind_without_repl
         "intent": "conversation_history",
         "confidence": 0.94,
         "time_scope": "today",
-        "requested_format": "qa_summary",
+        "requested_format": "topic_summary",
         "reason": "询问今天聊过什么",
     })
     ctx = RoutingContext(

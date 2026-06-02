@@ -36,7 +36,7 @@ AgentMind 是 Agent 管理中枢，负责路由指令到后端 Agent、管理进
   "current_session": false,
   "explicit_date": "",
   "agent_filter": "",
-  "requested_format": "answer_only|qa_summary|topic_summary|list",
+  "requested_format": "answer_only|topic_summary|list",
   "reason": ""
 }
 

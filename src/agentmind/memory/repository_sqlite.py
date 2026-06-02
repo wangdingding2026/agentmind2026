@@ -177,7 +177,6 @@ class SqliteMemoryRepository:
         time_range_start: str = "",
         time_range_end: str = "",
         limit: int = 50,
-        include_history_answers: bool = False,
     ) -> list[dict]:
         return await asyncio.to_thread(
             self._read_conversation_turns_sync,
@@ -186,7 +185,6 @@ class SqliteMemoryRepository:
             time_range_start,
             time_range_end,
             limit,
-            include_history_answers,
         )
 
     def _read_conversation_turns_sync(
@@ -196,7 +194,6 @@ class SqliteMemoryRepository:
         time_range_start: str,
         time_range_end: str,
         limit: int,
-        include_history_answers: bool,
     ) -> list[dict]:
         clauses = ["c.user_id = ?"]
         params: list = [user_id]
@@ -209,9 +206,6 @@ class SqliteMemoryRepository:
         if time_range_end:
             clauses.append("c.created_at <= ?")
             params.append(time_range_end)
-        if not include_history_answers:
-            clauses.append("c.source_kind != ?")
-            params.append("conversation_history_answer")
         where = " AND ".join(clauses)
         params.append(limit)
 

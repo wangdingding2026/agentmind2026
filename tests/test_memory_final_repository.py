@@ -316,8 +316,8 @@ def test_read_conversation_turns_does_not_use_card_text_as_question(tmp_path):
     assert rows[0]["question"] == "用户原始问题"
 
 
-def test_read_conversation_turns_excludes_history_answers_by_default(tmp_path):
-    """默认排除 source_kind = conversation_history_answer"""
+def test_read_conversation_turns_includes_history_answers_by_default(tmp_path):
+    """默认按统一记忆读取，包括历史查询答案"""
     from agentmind.memory.dto import MemoryWriteCommand
     from agentmind.memory.repository_sqlite import SqliteMemoryRepository
 
@@ -344,31 +344,7 @@ def test_read_conversation_turns_excludes_history_answers_by_default(tmp_path):
     rows = asyncio.run(repo.read_conversation_turns(user_id="u_exclude"))
     ids = [r["memory_id"] for r in rows]
     assert "turn-normal" in ids
-    assert "turn-history" not in ids
-
-
-def test_read_conversation_turns_can_include_history_answers(tmp_path):
-    """include_history_answers=True 时包含历史查询答案"""
-    from agentmind.memory.dto import MemoryWriteCommand
-    from agentmind.memory.repository_sqlite import SqliteMemoryRepository
-
-    repo = SqliteMemoryRepository(str(tmp_path / "memory.db"))
-    asyncio.run(repo.write_raw_and_card(MemoryWriteCommand(
-        memory_id="turn-hist2",
-        content="今天聊过什么",
-        summary="[agentmind] 今天的对话记录：...",
-        user_id="u_include",
-        source_agent="agentmind",
-        source_kind="conversation_history_answer",
-        created_at="2026-05-29 09:05:00",
-    )))
-
-    rows = asyncio.run(repo.read_conversation_turns(
-        user_id="u_include",
-        include_history_answers=True,
-    ))
-    ids = [r["memory_id"] for r in rows]
-    assert "turn-hist2" in ids
+    assert "turn-history" in ids
 
 
 def test_read_conversation_turns_filters_by_conversation_id(tmp_path):

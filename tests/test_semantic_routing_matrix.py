@@ -75,7 +75,7 @@ def _build_context(message: str) -> RoutingContext:
                 "confidence": 0.95,
                 "time_scope": "current_session",
                 "current_session": True,
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -87,7 +87,7 @@ def _build_context(message: str) -> RoutingContext:
                 "confidence": 0.92,
                 "time_scope": "current_session",
                 "current_session": True,
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -98,7 +98,7 @@ def _build_context(message: str) -> RoutingContext:
                 "intent": "conversation_history",
                 "confidence": 0.95,
                 "time_scope": "today",
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -109,7 +109,7 @@ def _build_context(message: str) -> RoutingContext:
                 "intent": "conversation_history",
                 "confidence": 0.95,
                 "time_scope": "today",
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -120,7 +120,7 @@ def _build_context(message: str) -> RoutingContext:
                 "intent": "conversation_history",
                 "confidence": 0.92,
                 "time_scope": "yesterday",
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -132,7 +132,7 @@ def _build_context(message: str) -> RoutingContext:
                 "confidence": 0.90,
                 "time_scope": "explicit_date",
                 "explicit_date": "2026-05-29",
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -145,7 +145,7 @@ def _build_context(message: str) -> RoutingContext:
                 "time_scope": "current_session",
                 "current_session": True,
                 "agent_filter": "codex",
-                "requested_format": "qa_summary",
+                "requested_format": "topic_summary",
             },
             "agentmind",
             SemanticIntentType.CONVERSATION_HISTORY,
@@ -224,7 +224,7 @@ class TestEndToEndRoutingMatrix:
                 intent=SemanticIntentType.CONVERSATION_HISTORY,
                 confidence=0.95,
                 time_scope="today",
-                requested_format="qa_summary",
+                requested_format="topic_summary",
             )
             ctx.semantic_intent = si
             return StrategyResult(
@@ -365,7 +365,7 @@ class TestEndToEndRoutingMatrix:
                 intent=SemanticIntentType.CONVERSATION_HISTORY,
                 confidence=0.92,
                 time_scope="today",
-                requested_format="qa_summary",
+                requested_format="topic_summary",
             )
             ctx.semantic_intent = si
             return StrategyResult(
@@ -423,7 +423,7 @@ class TestEndToEndRoutingMatrix:
                     intent=SemanticIntentType.CONVERSATION_HISTORY,
                     confidence=0.92,
                     time_scope="today",
-                    requested_format="qa_summary",
+                    requested_format="topic_summary",
                 )
                 ctx.semantic_intent = si
                 return StrategyResult(

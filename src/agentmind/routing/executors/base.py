@@ -64,12 +64,10 @@ class ExecutorBase(ABC):
             trace_id, "completed", agent_id,
             result=output, execution_time_ms=execution_time_ms,
         )
-        # agentmind 自答不写入任务记忆，避免记忆查询产生自循环
-        if agent_id != "agentmind":
-            await MemoryWriter.write_task(
-                trace_id, agent_id, raw_message, output, user_id,
-                source_kind=source_kind,
-            )
+        await MemoryWriter.write_task(
+            trace_id, agent_id, raw_message, output, user_id,
+            source_kind=source_kind,
+        )
 
     async def _record_failure(
         self, trace_id: str, agent_id: str,

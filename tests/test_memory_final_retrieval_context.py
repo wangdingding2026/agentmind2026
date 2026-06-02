@@ -134,7 +134,7 @@ async def test_self_reply_formats_memory_dates_in_local_timezone():
         intent=SemanticIntentType.CONVERSATION_HISTORY,
         confidence=0.92,
         time_scope="today",
-        requested_format="qa_summary",
+        requested_format="topic_summary",
     )
     ctx = RoutingContext(
         identity=RequestIdentity(user_id="u_local_time"),

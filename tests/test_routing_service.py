@@ -155,7 +155,7 @@ async def test_conversation_history_uses_dedicated_executor_in_api_path(tmp_path
         intent=SemanticIntentType.CONVERSATION_HISTORY,
         confidence=0.95,
         time_scope="today",
-        requested_format="qa_summary",
+        requested_format="topic_summary",
     )
     decision = RoutingDecision(
         agent_id="agentmind",
@@ -371,7 +371,7 @@ async def test_conversation_history_uses_dedicated_executor_in_text_stream(tmp_p
         intent=SemanticIntentType.CONVERSATION_HISTORY,
         confidence=0.95,
         time_scope="today",
-        requested_format="qa_summary",
+        requested_format="topic_summary",
     )
     decision = RoutingDecision(
         agent_id="agentmind",

@@ -549,6 +549,194 @@ class TestRunDiscussion:
             assert "300" not in prompt, f"prompt 错误回退到默认300字: {prompt[:80]}"
 
     @pytest.mark.asyncio
+    async def test_followup_prompt_keeps_original_topic_anchor(self, monkeypatch):
+        """上一轮偏题时，下一轮和总结仍应锚定原始议题"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        agent_prompts = []
+
+        async def _fake_send(text):
+            pass
+
+        async def _fake_stream(msg):
+            agent_prompts.append(msg)
+            if len(agent_prompts) == 2:
+                _session.stop_discussion("u1")
+            yield StreamEvent(
+                StreamEventType.CONTENT,
+                "扩散模型、世界模型与反馈延迟会造成控制系统振荡。",
+            )
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _fake_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        ex_b.execute_stream = _fake_stream
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
+
+        topic = "幼儿园需要学习ai吗？不要偏离核心主题"
+        _session.start_discussion("u1")
+        await _run_discussion(topic, ["a", "b"], "u1", reg, _fake_send)
+
+        followup_prompt = agent_prompts[1]
+        summary_prompt = agent_prompts[-1]
+        assert f'原始议题："{topic}"' in followup_prompt
+        assert "若上一轮偏离原始议题" in followup_prompt
+        assert f'原始议题："{topic}"' in summary_prompt
+        assert "忽略与原始议题无关的内容" in summary_prompt
+
+    @pytest.mark.asyncio
+    async def test_dynamic_word_limit_is_enforced_on_sent_messages(self, monkeypatch):
+        """用户限制不同字数时，超限观点应由同一 Agent 后台重写为完整短答"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        agent_prompts = []
+
+        async def _fake_send_20(text):
+            sent_20.append(text)
+            if text.startswith("【AgentA】"):
+                _session.stop_discussion("u1")
+
+        async def _fake_send_100(text):
+            sent_100.append(text)
+            if text.startswith("【AgentA】"):
+                _session.stop_discussion("u1")
+
+        async def _long_stream(msg):
+            agent_prompts.append(msg)
+            if "重写" in msg and "20字" in msg:
+                yield StreamEvent(StreamEventType.CONTENT, "不必学AI，重游戏。")
+                return
+            if "重写" in msg and "100字" in msg:
+                yield StreamEvent(StreamEventType.CONTENT, "幼儿园不必系统学AI，应重视游戏、表达、社交和真实互动。")
+                return
+            yield StreamEvent(
+                StreamEventType.CONTENT,
+                "幼儿园阶段应重视游戏、语言、社交、好奇心和真实互动，不应系统学习AI工具。"
+                "如果过早把AI作为课程目标，容易把成人技术焦虑转嫁给儿童，削弱他们在现实世界中的探索、表达、合作和身体体验。"
+                "教育重点应放在同伴协作、情绪管理、动手实验、身体运动和亲子阅读上，而不是提前训练工具使用。",
+            )
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _long_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
+
+        sent_20 = []
+        _session.start_discussion("u1")
+        await _run_discussion("幼儿园需要学习ai吗？回复限制20个字", ["a", "b"], "u1", reg, _fake_send_20)
+
+        sent_100 = []
+        _session.start_discussion("u1")
+        await _run_discussion("幼儿园需要学习ai吗？回复限制100字", ["a", "b"], "u1", reg, _fake_send_100)
+
+        agent_20 = next(msg for msg in sent_20 if msg.startswith("【AgentA】"))
+        agent_100 = next(msg for msg in sent_100 if msg.startswith("【AgentA】"))
+        content_20 = agent_20.split("\n", 1)[1]
+        content_100 = agent_100.split("\n", 1)[1]
+        assert len(content_20) <= 20
+        assert len(content_100) <= 100
+        assert len(content_100) > len(content_20)
+        assert content_20 == "不必学AI，重游戏。"
+        assert content_100 == "幼儿园不必系统学AI，应重视游戏、表达、社交和真实互动。"
+        assert any("重写" in prompt and "20字" in prompt for prompt in agent_prompts)
+        assert any("重写" in prompt and "100字" in prompt for prompt in agent_prompts)
+
+    @pytest.mark.asyncio
+    async def test_summary_word_limit_uses_background_rewrite(self, monkeypatch):
+        """总结超限时也应后台重写，不应截断半句"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        sent_messages = []
+        agent_prompts = []
+
+        async def _fake_send(text):
+            sent_messages.append(text)
+            if text.startswith("【AgentA】"):
+                _session.stop_discussion("u1")
+
+        async def _agent_a_stream(msg):
+            agent_prompts.append(msg)
+            if "重写" in msg and "20字" in msg:
+                yield StreamEvent(StreamEventType.CONTENT, "结论：不必学AI。")
+                return
+            if "讨论记录" in msg:
+                yield StreamEvent(StreamEventType.CONTENT, "核心结论是幼儿园不必系统学习AI，应把重点放在游戏、表达和真实互动上。")
+                return
+            yield StreamEvent(StreamEventType.CONTENT, "不必学AI。")
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _agent_a_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
+
+        _session.start_discussion("u1")
+        await _run_discussion("幼儿园需要学习ai吗？回复限制20字", ["a", "b"], "u1", reg, _fake_send)
+
+        summary = next(msg for msg in sent_messages if msg.startswith("总结（by AgentA）"))
+        summary_content = summary.split("\n", 1)[1]
+        assert summary_content == "结论：不必学AI。"
+        assert len(summary_content) <= 20
+        assert any("重写" in prompt and "20字" in prompt for prompt in agent_prompts)
+
+    @pytest.mark.asyncio
+    async def test_stop_discards_current_turn_but_keeps_final_summary(self, monkeypatch):
+        """用户停在当前 Agent 流中时，应丢弃当前观点，但基于已完成历史输出总结"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        sent_messages = []
+        agent_prompts = []
+
+        async def _fake_send(text):
+            sent_messages.append(text)
+
+        async def _agent_a_stream(msg):
+            agent_prompts.append(msg)
+            yield StreamEvent(StreamEventType.CONTENT, "已完成观点")
+
+        async def _agent_b_stream(msg):
+            agent_prompts.append(msg)
+            yield StreamEvent(StreamEventType.CONTENT, "当前轮半截观点")
+            _session.stop_discussion("u1")
+            yield StreamEvent(StreamEventType.CONTENT, "停后不应出现")
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _agent_a_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        ex_b.execute_stream = _agent_b_stream
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
+
+        _session.start_discussion("u1")
+        await _run_discussion("幼儿园需要学习ai吗？回复限制50字", ["a", "b"], "u1", reg, _fake_send)
+
+        assert any(msg.startswith("【AgentA】") for msg in sent_messages)
+        assert not any(msg.startswith("【AgentB】") for msg in sent_messages)
+        assert any(msg.startswith("总结（by AgentA）") for msg in sent_messages)
+        summary_prompt = agent_prompts[-1]
+        assert "已完成观点" in summary_prompt
+        assert "当前轮半截观点" not in summary_prompt
+        assert "停后不应出现" not in summary_prompt
+
+    @pytest.mark.asyncio
     async def test_agent_stderr_error_shown(self, monkeypatch):
         """Agent stdout 为空但 stderr 有错误 → 显示错误原因"""
         from agentmind.services.routing_service import _run_discussion
@@ -558,9 +746,10 @@ class TestRunDiscussion:
 
         async def _fake_send(text):
             sent_messages.append(text)
+            if text.startswith("【Codex】"):
+                _session.stop_discussion("u1")
 
         async def _error_stream(msg):
-            _session.stop_discussion("u1")
             yield StreamEvent(StreamEventType.ERROR, "Reconnecting... daemon not running")
 
         ex_a = _make_healthy_executor("codex", "Codex")

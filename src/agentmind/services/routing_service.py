@@ -19,6 +19,7 @@ from agentmind.memory.service import MemoryService
 from agentmind.orchestration.engine import OrchestrationEngine
 from agentmind.orchestration.models import OrchestrationPlan
 from agentmind.routing.context import RequestIdentity, RoutingDecision
+from agentmind.routing.discussion_controller import DiscussionController, extract_word_limit
 from agentmind.routing.executors.conversation_history import ConversationHistoryExecutor
 from agentmind.routing.executors.self_reply import SelfReplyExecutor
 from agentmind.routing.executors.single_agent import SingleAgentExecutor
@@ -418,10 +419,69 @@ def _parse_discussion(msg: str, agent_registry) -> tuple[list[str], str] | None:
 
 def _extract_discussion_word_limit(topic: str) -> str:
     """Return the normalized discussion word limit, or the default limit."""
-    match = re.search(r'(\d+)\s*(?:个\s*)?字', topic or "")
-    if match:
-        return f"限{match.group(1)}字"
-    return "限300字"
+    return f"限{extract_word_limit(topic)}字"
+
+
+async def _collect_discussion_output(agent, prompt: str, user_id: str, *, stop_sensitive: bool = True) -> tuple[str, str, bool]:
+    full_output = []
+    error_message = ""
+    stopped = False
+    async for event in agent.execute_stream(prompt):
+        if stop_sensitive and not _session.is_discussion_active(user_id):
+            stopped = True
+            break
+        if event.type.value == "content":
+            full_output.append(event.text)
+        elif event.type.value == "error":
+            error_message = event.text
+        if stop_sensitive and not _session.is_discussion_active(user_id):
+            stopped = True
+            break
+    return "".join(full_output), error_message, stopped
+
+
+async def _produce_valid_discussion_text(
+    agent,
+    controller: DiscussionController,
+    prompt: str,
+    user_id: str,
+    *,
+    response_path: str = "",
+    kind: str = "观点",
+    stop_sensitive: bool = True,
+) -> tuple[str, bool]:
+    raw_text, error_message, stopped = await _collect_discussion_output(
+        agent,
+        prompt,
+        user_id,
+        stop_sensitive=stop_sensitive,
+    )
+    if stopped:
+        return "", True
+    text = raw_text
+    if response_path:
+        from agentmind.routing.utils import extract_response_path
+        text = extract_response_path(text, response_path)
+    if not text.strip():
+        text = f"（无输出：{error_message[:150]}）" if error_message else "（本轮无内容）"
+    if controller.is_valid_response(text):
+        return text.strip(), False
+
+    rewrite_prompt = controller.build_rewrite_prompt(text, kind=kind)
+    rewritten, rewrite_error, stopped = await _collect_discussion_output(
+        agent,
+        rewrite_prompt,
+        user_id,
+        stop_sensitive=stop_sensitive,
+    )
+    if stopped:
+        return "", True
+    if response_path:
+        from agentmind.routing.utils import extract_response_path
+        rewritten = extract_response_path(rewritten, response_path)
+    if not rewritten.strip() and rewrite_error:
+        rewritten = f"（无输出：{rewrite_error[:150]}）"
+    return rewritten.strip(), False
 
 
 async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_registry, send_msg):
@@ -436,7 +496,7 @@ async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_
         await send_msg("需要至少 2 个健康的 Agent 才能讨论")
         return
 
-    history: list[tuple[str, str]] = []
+    controller = DiscussionController.from_topic(topic)
     turn = 0
     names = "、".join(a.capability.name for a in agents)
     await send_msg(f"讨论开始：{topic}\n参与：{names}\n各 Agent 将轮流发言，发送「停」结束讨论")
@@ -447,37 +507,25 @@ async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_
             break
         agent = agents[turn % len(agents)]
         turn += 1
-        _word_limit = _extract_discussion_word_limit(topic)
-        if not history:
-            context = f'关于 "{topic}"，请发表你的核心观点。{_word_limit}。'
-        else:
-            prev_name, prev_response = history[-1]
-            context = f'{prev_name} 认为：\n"""{prev_response[:800]}"""\n\n你是否同意？如果同意，补充新的论据；如果不同意，直接反驳并说明理由。{_word_limit}。'
-        full_output = []
-        error_message = ""
+        context = controller.build_turn_prompt()
         response_path = agent.capability.config.get("response_path", "")
         try:
-            async for event in agent.execute_stream(context):
-                if event.type.value == "content":
-                    full_output.append(event.text)
-                elif event.type.value == "error":
-                    error_message = event.text
-                if not _session.is_discussion_active(user_id):
-                    break
+            response, stopped_mid_turn = await _produce_valid_discussion_text(
+                agent,
+                controller,
+                context,
+                user_id,
+                response_path=response_path,
+                kind="观点",
+                stop_sensitive=True,
+            )
         except Exception as e:
             await send_msg(f"【{agent.capability.name}】发言失败：{e}")
             continue
-        response = "".join(full_output)
-        if response_path:
-            from agentmind.routing.utils import extract_response_path
-            response = extract_response_path(response, response_path)
-        if not response.strip():
-            response = f"（无输出：{error_message[:150]}）" if error_message else "（本轮无内容）"
-        history.append((agent.capability.name, response))
-        truncated = response[:1500]
-        if len(response) > 1500:
-            truncated += "\n...(发言过长已截断)"
-        await send_msg(f"【{agent.capability.name}】\n{truncated}")
+        if stopped_mid_turn or not _session.is_discussion_active(user_id):
+            break
+        controller.record_response(agent.capability.name, response)
+        await send_msg(f"【{agent.capability.name}】\n{response}")
         turn_trace_id = generate_trace_id()
         await record_task_start(turn_trace_id, f"讨论：{topic}（第{turn}轮）")
         await record_task_end(turn_trace_id, "completed", agent.capability.id, result=response, execution_time_ms=0)
@@ -497,34 +545,25 @@ async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_
             break
         await _asyncio_impl.sleep(3)
 
-    if history and agents:
+    if controller.history and agents:
         summarizer = agents[0]
-        summary_context = f'以下是关于 "{topic}" 的完整讨论：\n'
-        for name, resp in history:
-            summary_context += f"\n{name}：{resp[:800]}"
-        summary_context += (
-            f"\n\n请输出结构化结论，按以下格式。{_word_limit}：\n"
-            "1. 核心结论（一句话概括讨论结果）\n"
-            "2. 共识点（列出双方都同意的）\n"
-            "3. 分歧点（列出双方立场不同的）\n"
-            "4. 行动建议（基于讨论结果，下一步该做什么）"
-        )
-        full_output = []
+        summary_context = controller.build_summary_prompt()
         try:
-            async for event in summarizer.execute_stream(summary_context):
-                if event.type.value == "content":
-                    full_output.append(event.text)
+            summary_text, _ = await _produce_valid_discussion_text(
+                summarizer,
+                controller,
+                summary_context,
+                user_id,
+                response_path=summarizer.capability.config.get("response_path", ""),
+                kind="总结",
+                stop_sensitive=False,
+            )
         except Exception:
-            pass
-        summary_text = "".join(full_output)
+            summary_text = ""
         if not summary_text.strip():
             summary_text = "（总结生成失败）"
-        summary_rp = summarizer.capability.config.get("response_path", "")
-        if summary_rp:
-            from agentmind.routing.utils import extract_response_path
-            summary_text = extract_response_path(summary_text, summary_rp)
         if summary_text.strip():
-            await send_msg(f"总结（by {summarizer.capability.name}）\n{summary_text[:2000]}")
+            await send_msg(f"总结（by {summarizer.capability.name}）\n{summary_text}")
             sum_trace_id = generate_trace_id()
             await record_task_start(sum_trace_id, f"讨论总结：{topic}")
             await record_task_end(sum_trace_id, "completed", summarizer.capability.id, result=summary_text, execution_time_ms=0)

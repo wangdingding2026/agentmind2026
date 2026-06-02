@@ -1,12 +1,12 @@
 # AgentMind
 
-**带记忆的 AI 指挥中枢。**
+**带记忆的 异构Agent 指挥中枢。**
 
-AgentMind 不是一个新的 Agent，而是运行在多个 AI 工具之上的统一控制层。它负责发现、管理、路由和编排已有 Agent，让 Claude Code、Codex、Hermes、Aider、Cursor、Warp、Ollama 等工具可以在同一个入口下协同工作，并把关键任务、上下文和团队知识沉淀为长期记忆。
+AgentMind 不是一个新的 Agent，而是运行在多个 AI 工具之上的统一控制层。它负责发现、管理、路由和编排已有 Agent，让 Claude Code、Codex、Hermes、Aider、Cursor、Warp 等工具可以在同一个入口下协同工作，并把关键任务、上下文和团队知识沉淀为长期记忆。
 
 一句话概括：
 
-> AgentMind 让多个 AI Agent 从“各自为战”升级为“可路由、可记忆、可追踪、可编排”的智能协作系统。
+> AgentMind 让多个 异构AI Agent 从“各自为战”升级为“可路由、可记忆、可追踪、可编排”的智能协作系统。
 
 ## 项目定位
 
@@ -39,7 +39,6 @@ AgentMind 启动时会扫描本机环境，自动识别已安装的 AI 工具，
 - Aider
 - Cursor
 - Warp
-- Ollama
 - OpenClaw
 - 其他可被自动探测的 CLI 工具
 

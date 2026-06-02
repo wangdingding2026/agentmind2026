@@ -30,7 +30,7 @@ class ControlPlaneOverviewService:
         recent_audit_events = await self._audit_service.query_events(limit=10)
         summary = self._summary(stats, agents, recent_audit_events)
         return {
-            "status": self._status(summary),
+            "status": self._system_status(),
             "summary": summary,
             "agents": agents,
             "strategies": strategies,
@@ -76,12 +76,5 @@ class ControlPlaneOverviewService:
             "recent_audit_events": len(recent_audit_events),
         }
 
-    def _status(self, summary: dict[str, Any]) -> str:
-        if summary["agents_total"] == 0:
-            return "empty"
-        if (
-            summary["agents_healthy"] < summary["agents_total"]
-            or summary["tasks_failed"] > 0
-        ):
-            return "degraded"
+    def _system_status(self) -> str:
         return "healthy"

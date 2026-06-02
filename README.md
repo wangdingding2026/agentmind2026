@@ -199,7 +199,7 @@ flowchart TB
 
 - Python 3.10+
 - 推荐 macOS / Linux 本地环境；Windows 可在兼容 Python 环境下尝试运行
-- 推荐先安装至少一个可被 AgentMind 调用的 AI 工具，例如 Codex、Claude Code 或 Ollama
+- 推荐先安装至少一个可被 AgentMind 调用的 Agent 工具，例如 Codex 或 Claude Code
 
 ### 从源码安装
 

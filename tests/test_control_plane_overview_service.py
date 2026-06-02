@@ -36,7 +36,7 @@ class _AuditService:
 
 
 @pytest.mark.asyncio
-async def test_control_plane_overview_service_aggregates_degraded_status():
+async def test_control_plane_overview_service_reports_system_status_independent_of_agent_and_task_errors():
     from agentmind.services.control_plane_overview_service import ControlPlaneOverviewService
 
     service = ControlPlaneOverviewService(
@@ -48,7 +48,7 @@ async def test_control_plane_overview_service_aggregates_degraded_status():
 
     overview = await service.overview()
 
-    assert overview["status"] == "degraded"
+    assert overview["status"] == "healthy"
     assert overview["summary"] == {
         "agents_total": 2,
         "agents_healthy": 1,

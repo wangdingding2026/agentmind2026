@@ -7,7 +7,7 @@ from agentmind.agents.base import AgentCapability
 from agentmind.agents.api_executor import APIExecutor
 
 
-def make_api_executor(endpoint="http://localhost:11434/api/chat", **config_extra):
+def make_api_executor(endpoint="https://agent.example.test/api", **config_extra):
     cap = AgentCapability(
         id="test_api", name="Test API", type="api",
         tags=["test"], enabled=True, timeout=10,
@@ -102,7 +102,7 @@ class TestAPIHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_custom_config(self):
         ex = make_api_executor(health_check_config={
-            "url": "http://localhost:11434/health",
+            "url": "https://agent.example.test/health",
             "method": "GET",
             "expected_status": 200,
         })
@@ -119,7 +119,7 @@ class TestAPIHealthCheck:
             result = await ex.health_check()
             assert result is True
             mock_client.request.assert_called_once_with(
-                "GET", "http://localhost:11434/health", headers=None, json=None,
+                "GET", "https://agent.example.test/health", headers=None, json=None,
             )
 
 

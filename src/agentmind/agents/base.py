@@ -33,6 +33,7 @@ class AgentCapability:
     estimated_cost: float = 0.0
     avg_latency: float = 0.0
     credibility: float = 0.5  # 来源可信度（已知 Agent 默认 0.8，自动发现默认 0.3）
+    auto_discovered: bool = False
 
 
 @dataclass

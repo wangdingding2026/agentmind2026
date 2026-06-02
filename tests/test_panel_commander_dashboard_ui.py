@@ -128,7 +128,7 @@ def test_panel_audit_workbench_shows_specific_object_column():
 
     assert "<th>对象</th>" in html
     assert "function formatAuditObject" in js
-    assert "Embedding 配置" in js
+    assert "智能匹配 Embedding 配置" in js
     assert "系统设置" not in js
 
 
@@ -193,6 +193,15 @@ def test_panel_settings_page_aligns_actions_and_places_notes_at_card_bottom():
         assert actions is not None
         assert note_id not in actions.group("body")
         assert body.rfind('class="settings-note"') > body.rfind('class="settings-form')
+
+    embedding_section = re.search(
+        r'<section class="settings-section" id="settings-embedding-section">(?P<body>.*?)</section>',
+        html,
+        re.S,
+    )
+    assert embedding_section is not None
+    assert "智能匹配 Embedding" in embedding_section.group("body")
+    assert "用于按意思匹配相关记忆，并辅助选择更合适的 Agent。" in embedding_section.group("body")
 
     settings_grid_matches = re.findall(r"\.settings-grid \{(?P<body>.*?)\n\}", css, re.S)
     assert settings_grid_matches

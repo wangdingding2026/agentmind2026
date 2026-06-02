@@ -212,13 +212,13 @@ class TestMaskConfig:
                 {"Authorization": "Bearer secret123"},
                 {"Content-Type": "application/json"},
             ],
-            "body_template": {"model": "llama3"},
+            "body_template": {"model": "demo-model"},
         }
         masked = ConfigService().mask_sensitive(config)
         assert masked["endpoint"] == "http://api.example.com"
         assert masked["headers"][0]["Authorization"] == "****"
         assert masked["headers"][1]["Content-Type"] == "application/json"
-        assert masked["body_template"]["model"] == "llama3"
+        assert masked["body_template"]["model"] == "demo-model"
 
     def test_mask_nested_api_key(self):
         """嵌套 dict 中的 api_key 应被脱敏"""

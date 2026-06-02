@@ -253,8 +253,8 @@ doc.add_heading('4.2 自动发现机制', level=2)
 doc.add_paragraph('AgentMind 内置两层的 Agent 自动发现策略：')
 
 discovery = [
-    '第一层 — 已知 Agent 快路径：内置 9 个已知 AI 工具的特征库（Claude Code、Hermes、Codex、Aider、Cursor Agent、Warp AI、Ollama、OpenClaw），每个包含检测命令、标签、配置模板，命中即直接注册。',
-    '第二层 — 通用探测：扫描 PATH 中所有可执行文件，通过 --version 验证 + 多种常见 CLI 调用模式探测（-p, exec, ask 等），命中则自动生成配置模板。限 20 个/30 秒。',
+    '已知 Agent 快路径：内置明确支持的 Agent 工具特征库（Claude Code、Hermes、Codex、Aider、Cursor Agent、Warp AI、OpenClaw），每个包含检测命令、标签、配置模板，命中即直接注册。',
+    '自动发现只扫描显式支持的 Agent，避免启动时执行任意本地程序；未内置的 Agent 通过面板手动添加。',
     '非首次启动时合并新 Agent 到已有配置，不覆盖用户手动修改。',
 ]
 for d in discovery:

@@ -88,7 +88,7 @@ def _settings_status_service():
 
 
 def _connector_discovery_service():
-    return ConnectorDiscoveryService()
+    return ConnectorDiscoveryService(config_service=ConfigService(CONFIG_DIR))
 
 
 def _session_runtime_service(request: Request):
@@ -195,16 +195,23 @@ def create_panel_router() -> APIRouter:
     async def add_agent(request: Request):
         """手动添加 Agent 到 agents.yaml 并立即注册"""
         body = await request.json()
-        agent_id = body.get("id", "").strip()
-        name = body.get("name", "").strip()
-        command = body.get("command", "").strip()
+        agent_name = body.get("agent", body.get("name", "")).strip()
+        open_way = body.get("open_way", body.get("command", "")).strip()
         tags_str = body.get("tags", "").strip()
 
-        if not agent_id or not name or not command:
-            return {"ok": False, "error": "ID、名称和命令不能为空"}
+        if not open_way:
+            return {
+                "ok": False,
+                "error": "请填写这个 Agent 的打开方式。",
+                "next_step": "可以粘贴安装说明里的启动示例，然后点击“检查并添加”。",
+            }
 
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-        return _agent_control_service(request).add_cli_agent(agent_id, name, command, tags)
+        return await _agent_control_service(request).add_agent_from_open_way(
+            agent_name,
+            open_way,
+            tags,
+        )
 
     @router.post("/agents/{agent_id}/restart")
     async def restart_agent(agent_id: str, request: Request):

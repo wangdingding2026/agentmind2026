@@ -200,7 +200,7 @@ function formatAuditObject(event) {
 function formatSettingsAuditObject(keys) {
   const labels = {
     feishu: '飞书通道配置',
-    embedding: 'Embedding 配置',
+    embedding: '智能匹配 Embedding 配置',
     semantic_router: '语义路由配置',
     meta: 'Core LLM 配置',
     core_llm: 'Core LLM 配置',
@@ -269,14 +269,20 @@ function renderCommandStatusOverview(overview, memory, feishu, embedding) {
   const tasksTotal = summary.tasks_total ?? 0;
   const tasksFailed = summary.tasks_failed ?? 0;
   const feishuState = feishu && feishu.connected ? '已连接' : feishu && feishu.enabled ? '连接中' : '未启用';
-  const embeddingState = embedding && embedding.has_local_model ? '本地可用' : 'API/关键词后备';
+  const matchingAvailable = embedding && (embedding.has_local_model || (embedding.enabled && embedding.has_external_api));
+  const matchingState = matchingAvailable ? '可用' : '备用模式';
+  const matchingDetail = embedding && embedding.has_local_model
+    ? '用于按意思查找和匹配'
+    : embedding && embedding.enabled && embedding.has_external_api
+      ? '使用已配置的 API'
+      : '本地能力不可用，使用备用匹配';
   const cards = [
-    ['整体状态', formatSystemStatus(overview ? overview.status : 'unknown'), overview && overview.status === 'healthy' ? 'green' : 'orange', '控制面当前汇总状态'],
+    ['系统状态', formatSystemStatus(overview ? overview.status : 'unknown'), overview && overview.status === 'healthy' ? 'green' : 'orange', '系统服务状态'],
     ['Agent 健康', agentsHealthy + '/' + agentsTotal, agentsHealthy === agentsTotal && agentsTotal > 0 ? 'green' : 'orange', '健康数 / 总数'],
     ['任务', tasksTotal + ' 总数', tasksFailed ? 'red' : 'green', tasksFailed + ' 失败'],
     ['记忆', (memory && memory.total) ?? 0, '', '团队与个人记忆条目'],
     ['飞书通道', feishuState, feishu && feishu.connected ? 'green' : '', '外部消息连接'],
-    ['Embedding', embeddingState, embedding && embedding.has_local_model ? 'green' : 'orange', '向量能力状态'],
+    ['智能匹配', matchingState, matchingAvailable ? 'green' : 'orange', matchingDetail],
   ];
   $('command-status-overview').innerHTML = cards.map(([label, value, cls, detail]) => (
     '<div class="metric-card ' + cls + '"><p class="metric-value">' + escapeHtml(value ?? 0) +
@@ -456,6 +462,7 @@ async function loadAgentsWorkbench() {
         name: connector.name,
         type: connector.type,
         tags: connector.tags || [],
+        open_way: connector.open_way || connector.id,
         installed: false,
         healthy: null,
         enabled: false,
@@ -466,17 +473,16 @@ async function loadAgentsWorkbench() {
   $('agents-tbody').innerHTML = rows.map(agent => (
     '<tr><td><strong>' + escapeHtml(agent.name) + '</strong><div class="item-meta">' + escapeHtml(agent.id) + '</div></td>' +
     '<td>' + escapeHtml(agent.type || '-') + '</td>' +
-    '<td>' + tagsHtml(agent.tags) + '</td>' +
+    '<td>' + tagsHtml(agent.tags) + ' ' + rowButton('标签', 'edit-agent-tags', agent.id) + '</td>' +
     '<td>' + (agent.installed ? statusBadge('healthy') : '<span class="item-meta">未安装</span>') + '</td>' +
     '<td>' + (agent.installed ? statusBadge(agent.healthy ? 'healthy' : 'unhealthy') : '-') + '</td>' +
-    '<td>' + (agent.installed ? agentOps(agent) : '<span class="item-meta">连接器</span>') + '</td></tr>'
+    '<td>' + agentOps(agent) + '</td></tr>'
   )).join('') || '<tr><td colspan="6" class="empty">暂无 Agent</td></tr>';
 }
 
 function agentOps(agent) {
   return rowButton('测试', 'test-agent', agent.id) + ' ' +
     rowButton('重启', 'restart-agent', agent.id) + ' ' +
-    rowButton('标签', 'edit-agent-tags', agent.id) + ' ' +
     rowButton(agent.enabled ? '禁用' : '启用', 'toggle-agent', agent.id);
 }
 
@@ -484,35 +490,71 @@ async function scanAgents() {
   showToast('正在扫描...');
   try {
     const res = await fetch('/v1/agents/scan', { method: 'POST' });
-    await res.json();
+    const data = await res.json();
+    if (!res.ok || (data && data.ok === false)) {
+      throw new Error((data && (data.error || data.detail)) || ('HTTP ' + res.status));
+    }
     showToast('扫描完成');
-    loadAgentsWorkbench();
+    await loadAgentsWorkbench();
   } catch (error) {
     showToast('扫描失败: ' + error.message, 'error');
   }
 }
 
 async function testAgent(agentId) {
+  const agent = state.agents.find(item => item.id === agentId);
+  if (!agent || !agent.installed) {
+    showToast((agent ? agent.name : agentId) + ' 还没有启用，请先启用。', 'error');
+    return;
+  }
   try {
     const res = await fetch('/v1/agents/' + encodeURIComponent(agentId) + '/health-check', { method: 'POST' });
     const data = await res.json();
     showToast(data.healthy ? agentId + ' 连接正常' : agentId + ' 连接异常', data.healthy ? 'success' : 'error');
-    loadAgentsWorkbench();
+    await loadAgentsWorkbench();
   } catch (error) {
     showToast('测试失败: ' + error.message, 'error');
   }
 }
 
 async function restartAgent(agentId) {
+  const agent = state.agents.find(item => item.id === agentId);
+  if (!agent || !agent.installed) {
+    showToast((agent ? agent.name : agentId) + ' 还没有启用，请先启用。', 'error');
+    return;
+  }
   const data = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/restart', { method: 'POST' });
   showToast(data && data.error ? '重启失败: ' + data.error : agentId + ' 重启完成', data && data.error ? 'error' : 'success');
-  loadAgentsWorkbench();
+  await loadAgentsWorkbench();
 }
 
 async function toggleAgent(agentId) {
+  const agent = state.agents.find(item => item.id === agentId);
+  if (agent && !agent.installed) {
+    await enableKnownAgent(agent);
+    return;
+  }
   const data = await fetchAPI('/agents/' + encodeURIComponent(agentId) + '/toggle', { method: 'POST' });
   showToast(data && data.error ? '切换失败: ' + data.error : agentId + (data && data.enabled ? ' 已启用' : ' 已禁用'), data && data.error ? 'error' : 'success');
-  loadAgentsWorkbench();
+  await loadAgentsWorkbench();
+}
+
+async function enableKnownAgent(agent) {
+  const data = await fetchAPI('/agents/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      agent: agent.name,
+      open_way: agent.open_way || agent.id,
+      tags: (agent.tags || []).join(','),
+    }),
+  });
+  if (data && data.ok) {
+    showToast(data.message || agent.name + ' 已启用', 'success');
+    await loadAgentsWorkbench();
+  } else {
+    showToast([data && data.error, data && data.next_step].filter(Boolean).join(' ') || '启用失败', 'error');
+  }
 }
 
 async function editAgentTags(agentId) {
@@ -530,29 +572,42 @@ async function editAgentTags(agentId) {
   if (data) loadAgentsWorkbench();
 }
 
+function setAddAgentMessage(message, type = 'error') {
+  const element = $('add-agent-msg');
+  element.textContent = message || '';
+  element.className = 'form-message ' + type;
+}
+
 async function addAgent() {
   const body = {
-    id: $('new-agent-id').value.trim(),
-    name: $('new-agent-name').value.trim(),
-    command: $('new-agent-cmd').value.trim(),
+    agent: $('new-agent-name').value.trim(),
+    open_way: $('new-agent-open').value.trim(),
     tags: $('new-agent-tags').value.trim(),
   };
-  if (!body.id || !body.name || !body.command) {
-    showToast('请填写 ID、名称和命令', 'error');
+  if (!body.open_way) {
+    setAddAgentMessage('请填写这个 Agent 的打开方式。', 'error');
     return;
   }
-  const data = await fetchAPI('/agents/add', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  $('add-agent-msg').textContent = data && data.ok ? '已添加' : (data && data.error) || '添加失败';
+  let data = null;
+  try {
+    const res = await fetch(API + '/agents/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    data = await res.json();
+  } catch (error) {
+    setAddAgentMessage('请求失败: ' + error.message, 'error');
+    return;
+  }
+  const message = data && data.ok
+    ? (data.message || '已添加，可以使用了')
+    : [data && data.error, data && data.next_step].filter(Boolean).join(' ');
+  setAddAgentMessage(message || '添加失败', data && data.ok ? 'success' : 'error');
   if (data && data.ok) {
-    $('new-agent-id').value = '';
     $('new-agent-name').value = '';
-    $('new-agent-cmd').value = '';
+    $('new-agent-open').value = '';
     $('new-agent-tags').value = '';
-    $('add-agent-panel').hidden = true;
     loadAgentsWorkbench();
   }
 }
@@ -805,7 +860,7 @@ async function toggleSemantic() {
 async function toggleEmbedding() {
   const enabled = $('btn-emb-toggle').textContent !== '已启用';
   if (enabled && (!$('setting-emb-endpoint').value.trim() || !$('setting-emb-key').value.trim() || !$('setting-emb-model').value.trim())) {
-    showToast('请填写 Embedding 配置', 'error');
+    showToast('请填写智能匹配 Embedding 配置', 'error');
     return;
   }
   const ok = await saveSettingsSection({ embedding: {
@@ -818,7 +873,7 @@ async function toggleEmbedding() {
   }});
   if (ok) setToggleBtn('btn-emb-toggle', enabled);
   if (ok) loadEmbeddingStatus();
-  showToast(ok ? (enabled ? 'Embedding 已启用' : 'Embedding 已禁用') : '保存失败', ok ? 'success' : 'error');
+  showToast(ok ? (enabled ? '智能匹配 Embedding 已启用' : '智能匹配 Embedding 已禁用') : '保存失败', ok ? 'success' : 'error');
 }
 
 async function toggleCoreLLM() {
@@ -841,9 +896,11 @@ async function toggleCoreLLM() {
 async function loadEmbeddingStatus() {
   const data = await fetchAPI('/embedding/status');
   if (!data) return;
-  $('embedding-status-line').textContent = data.has_local_model ?
-    '本地模型已安装，离线语义搜索可用' :
-    '未检测到本地模型，使用 API 或关键词后备';
+  $('embedding-status-line').textContent = data.has_local_model
+    ? '本地能力可用'
+    : data.enabled && data.has_external_api
+      ? '已配置 API，智能匹配可用'
+      : '未配置智能匹配，使用备用匹配';
 }
 
 async function saveRetentionSettings() {
@@ -867,7 +924,6 @@ function handleAction(action, id) {
     'open-task-detail': () => openTaskDetail(id),
     'close-task-detail': closeTaskDetail,
     'scan-agents': scanAgents,
-    'toggle-add-agent': () => { $('add-agent-panel').hidden = !$('add-agent-panel').hidden; },
     'add-agent': addAgent,
     'test-agent': () => testAgent(id),
     'restart-agent': () => restartAgent(id),

@@ -80,7 +80,7 @@ def agents_yaml(tmp_dir):
             {"id": "test_general", "name": "Test General", "type": "cli", "tags": ["general", "test"], "enabled": True, "timeout": 5,
              "config": {"command": "echo '{instruction}'", "health_check": "echo ok"}},
             {"id": "test_api", "name": "Test API", "type": "api", "tags": ["general"], "enabled": True, "timeout": 5,
-             "config": {"endpoint": "http://localhost:11434/api/chat", "method": "POST"}},
+             "config": {"endpoint": "https://agent.example.test/api", "method": "POST"}},
         ]
     }
     path = tmp_dir / "agents.yaml"

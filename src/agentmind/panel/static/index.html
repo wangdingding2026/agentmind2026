@@ -112,17 +112,15 @@
         </div>
         <div class="toolbar">
           <button class="btn-outline" type="button" data-action="scan-agents">扫描新 Agent</button>
-          <button class="btn-outline" type="button" data-action="toggle-add-agent">手动添加</button>
         </div>
       </header>
-      <section class="panel" id="add-agent-panel" hidden>
+      <section class="panel" id="add-agent-panel">
         <div class="panel-head"><h2>手动添加 Agent</h2></div>
         <div class="form-grid">
-          <label>Agent ID <input id="new-agent-id" type="text" placeholder="my_agent"></label>
-          <label>名称 <input id="new-agent-name" type="text" placeholder="我的 Agent"></label>
-          <label>命令 <input id="new-agent-cmd" type="text" placeholder="myagent -p '{instruction}'"></label>
-          <label>标签 <input id="new-agent-tags" type="text" placeholder="代码, 分析"></label>
-          <button class="btn-primary" type="button" data-action="add-agent">添加</button>
+          <label>Agent（可选） <input id="new-agent-name" type="text" placeholder="例如：Codex 或 Claude Code"></label>
+          <label>打开方式 <input id="new-agent-open" type="text" placeholder="例如：codex"></label>
+          <label>标签 <input id="new-agent-tags" type="text" placeholder="可选，例如：代码, 分析"></label>
+          <button class="btn-primary" type="button" data-action="add-agent">检查并添加</button>
           <span class="form-message" id="add-agent-msg"></span>
         </div>
       </section>
@@ -259,7 +257,8 @@
           </div>
         </section>
         <section class="settings-section" id="settings-embedding-section">
-          <div class="settings-section-title">Embedding</div>
+          <div class="settings-section-title">智能匹配 Embedding</div>
+          <p class="settings-note">用于按意思匹配相关记忆，并辅助选择更合适的 Agent。</p>
           <div class="settings-form">
             <label class="settings-row"><span>接口地址</span><input id="setting-emb-endpoint" type="text"></label>
             <label class="settings-row"><span>密钥</span><input id="setting-emb-key" type="password"></label>

@@ -271,6 +271,12 @@ input, select {
 .settings-note:empty {
   display: none;
 }
+.form-message.error {
+  color: var(--red);
+}
+.form-message.success {
+  color: var(--green);
+}
 button { font: inherit; }
 .btn-outline, .btn-primary, .link-button {
   border-radius: 6px;

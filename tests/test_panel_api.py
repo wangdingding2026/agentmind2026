@@ -593,14 +593,17 @@ class TestPanelAPI:
             app, mp = make_panel_app(tmp_dir)
             client = TestClient(app)
             try:
+                mp.setattr("agentmind.services.agent_control_service.KNOWN_AGENTS", [], raising=False)
                 resp = client.post("/panel/api/agents/add", json={
-                    "id": "new_agent", "name": "New Agent", "command": "echo test",
+                    "agent": "Unknown Agent",
+                    "open_way": "definitely_missing_agentmind_test_command",
                 })
                 assert resp.status_code == 200
-                assert resp.json()["ok"] == True
-                # 验证已存在于列表中
-                resp2 = client.get("/panel/api/agents")
-                assert any(a["id"] == "new_agent" for a in resp2.json()["agents"])
+                assert resp.json() == {
+                    "ok": False,
+                    "error": "没有找到这个 Agent。请先安装它，或者粘贴它的完整打开方式后再试。",
+                    "next_step": "安装完成后，回到这里点击“检查并添加”。",
+                }
             finally:
                 mp.undo()
 
@@ -1041,21 +1044,25 @@ class TestPanelConfigServiceUsage:
                 def __init__(self, *args, **kwargs):
                     calls.append(("init", args, kwargs))
 
-                def add_cli_agent(self, agent_id, name, command, tags):
-                    calls.append(("add", agent_id, name, command, tags))
-                    return {"ok": True}
+                async def add_agent_from_open_way(self, agent_name, open_way, tags):
+                    calls.append(("add", agent_name, open_way, tags))
+                    return {"ok": True, "message": "已添加，可以使用了"}
 
             try:
                 mp.setattr("agentmind.panel.server.AgentControlService", FakeAgentControlService, raising=False)
                 resp = client.post("/panel/api/agents/add", json={
-                    "id": "new_agent",
-                    "name": "New Agent",
-                    "command": "echo ok",
+                    "agent": "New Agent",
+                    "open_way": "echo",
                     "tags": "general,code",
                 })
                 assert resp.status_code == 200
-                assert resp.json() == {"ok": True}
-                assert calls[1] == ("add", "new_agent", "New Agent", "echo ok", ["general", "code"])
+                assert resp.json() == {"ok": True, "message": "已添加，可以使用了"}
+                assert calls[1] == (
+                    "add",
+                    "New Agent",
+                    "echo",
+                    ["general", "code"],
+                )
             finally:
                 mp.undo()
 
@@ -1372,8 +1379,8 @@ class TestPanelConfigServiceUsage:
             calls = []
 
             class FakeConnectorDiscoveryService:
-                def __init__(self):
-                    calls.append(("init",))
+                def __init__(self, config_service=None):
+                    calls.append(("init", config_service))
 
                 def list_connectors(self):
                     calls.append(("list",))
@@ -1406,7 +1413,9 @@ class TestPanelConfigServiceUsage:
                         }
                     ]
                 }
-                assert calls == [("init",), ("list",)]
+                assert calls[0][0] == "init"
+                assert calls[0][1] is not None
+                assert calls[1] == ("list",)
             finally:
                 mp.undo()
 

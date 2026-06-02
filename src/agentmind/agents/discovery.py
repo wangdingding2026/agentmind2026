@@ -106,25 +106,6 @@ KNOWN_AGENTS: list[AgentProfile] = [
         },
     ),
     AgentProfile(
-        id="ollama",
-        name="Ollama",
-        type="api",
-        detect_commands=["ollama"],
-        tags=["local-model", "general"],
-        timeout=120,
-        config={
-            "endpoint": "http://localhost:11434/api/chat",
-            "method": "POST",
-            "body_template": {
-                "model": "llama3",
-                "messages": [{"role": "user", "content": "{instruction}"}],
-                "stream": False,
-            },
-            "response_path": "message.content",
-            "credibility": 0.6,
-        },
-    ),
-    AgentProfile(
         id="openclaw",
         name="OpenClaw",
         type="cli",
@@ -139,87 +120,6 @@ KNOWN_AGENTS: list[AgentProfile] = [
         },
     ),
 ]
-
-
-# 通用探测模式：依次尝试常见 CLI 调用约定
-_PROBE_PATTERNS = [
-    "-p {message}",
-    "exec {message}",
-    "agent --message {message} --local",
-    "ask {message}",
-    "{message}",
-]
-_PROBE_TIMEOUT = 5  # 每种模式超时秒数
-_TEST_MESSAGE = "hello"
-_BLOCKED_KEYWORDS = ["usage:", "error:", "not found", "command not found"]
-
-
-async def _probe_unknown_executable(cmd: str) -> dict | None:
-    """对未知命令行工具尝试常见调用模式，命中则返回配置"""
-    if not shutil.which(cmd):
-        return None
-
-    # 0. 先验证 --version
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            cmd, "--version",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        await asyncio.wait_for(proc.communicate(), timeout=_PROBE_TIMEOUT)
-        if proc.returncode != 0:
-            return None
-    except Exception:
-        return None
-
-    # 1. 尝试通信模式
-    for pattern in _PROBE_PATTERNS:
-        cmd_str = pattern.replace("{message}", _TEST_MESSAGE)
-        try:
-            parts = shlex.split(cmd_str)
-            proc = await asyncio.create_subprocess_exec(
-                cmd, *parts,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_PROBE_TIMEOUT)
-            except asyncio.TimeoutError:
-                proc.kill(); await proc.wait()
-                continue
-
-            if proc.returncode != 0:
-                continue
-
-            output = stdout.decode("utf-8", errors="replace").strip()
-            err_output = stderr.decode("utf-8", errors="replace").lower()
-            if not output or len(output) < 2:
-                continue
-            # 排除帮助信息
-            combined = (output + err_output).lower()
-            if any(kw in combined for kw in _BLOCKED_KEYWORDS):
-                continue
-
-            # 命中！生成配置
-            health_cmd = f"{cmd} --version"
-            full_cmd = pattern.replace("{message}", "{instruction}")
-            command = f"{cmd} {full_cmd}"
-            return {
-                "id": cmd,
-                "name": cmd.title(),
-                "type": "cli",
-                "tags": ["auto"],
-                "timeout": 120,
-                "enabled": True,
-                "auto_discovered": True,
-                "config": {
-                    "command": command,
-                    "health_check": health_cmd,
-                    "credibility": 0.3,
-                },
-            }
-        except Exception:
-            continue
-
-    return None
 
 
 async def _check_command_healthy(profile: AgentProfile) -> tuple[bool, str]:
@@ -271,11 +171,9 @@ async def _check_command_healthy(profile: AgentProfile) -> tuple[bool, str]:
 
 
 async def scan_installed_agents() -> list[AgentProfile]:
-    """双重策略扫描：KNOWN_AGENTS 优先，未知工具自动探测兜底"""
+    """扫描显式支持的 Agent，避免启动时执行任意本地程序。"""
     discovered = []
-    known_ids = {p.id for p in KNOWN_AGENTS}
 
-    # 第 1 层：KNOWN_AGENTS 快路径
     check_tasks = [(p, _check_command_healthy(p)) for p in KNOWN_AGENTS]
     results = await asyncio.gather(*[t for _, t in check_tasks], return_exceptions=True)
 
@@ -290,72 +188,31 @@ async def scan_installed_agents() -> list[AgentProfile]:
         elif status != "not_found":
             logger.info("Agent %s 已安装但不健康: %s (%s) status=%s", profile.id, profile.name, profile.type, status)
 
-    # 第 2 层：通用探测未知工具（限制数量和总时长）
-    import os as _os
-    import time as _time
-
-    # 读取已有 agents.yaml 的 ID，避免重复探测
-    from agentmind.storage.db import CONFIG_DIR
-    existing_ids = load_existing_agent_ids(CONFIG_DIR / "agents.yaml")
-    all_known = known_ids | existing_ids
-
-    probe_start = _time.time()
-    PROBE_MAX_COUNT = 20   # 最多探测 20 个未知工具
-    PROBE_MAX_SECS = 30    # 总探测时长上限 30 秒
-    probe_count = 0
-    path_dirs = _os.environ.get("PATH", "").split(_os.pathsep)
-    scanned = set()
-    for d in path_dirs:
-        try:
-            with _os.scandir(d) as entries:
-                for f in entries:
-                    if f.is_file() and _os.access(f.path, _os.X_OK):
-                        name = f.name
-                        if name in all_known or name in scanned:
-                            continue
-                        if name.startswith(".") or name in ("agentmind",):
-                            continue
-                        scanned.add(name)
-                        probe_count += 1
-                        if probe_count > PROBE_MAX_COUNT or _time.time() - probe_start > PROBE_MAX_SECS:
-                            break
-                        config = await _probe_unknown_executable(name)
-                        if config:
-                            profile = AgentProfile(
-                                id=config["id"], name=config["name"], type=config["type"],
-                                detect_commands=[config["id"]], tags=config["tags"],
-                                timeout=config["timeout"], config=config["config"],
-                                auto_discovered=True,
-                            )
-                            discovered.append(profile)
-                            logger.info("自动探测发现 Agent: %s", config["name"])
-            if probe_count > PROBE_MAX_COUNT or _time.time() - probe_start > PROBE_MAX_SECS:
-                break
-        except PermissionError:
-            continue
-
     if not discovered:
         logger.info("未发现健康可用的 Agent")
 
     return discovered
 
 
+def profile_to_agent_config(profile: AgentProfile) -> dict:
+    """将发现结果转换为 AgentRegistry 可加载的持久化配置。"""
+    agent = {
+        "id": profile.id,
+        "name": profile.name,
+        "type": profile.type,
+        "tags": profile.tags,
+        "enabled": True,
+        "timeout": profile.timeout,
+        "config": profile.config,
+    }
+    if profile.auto_discovered:
+        agent["auto_discovered"] = True
+    return agent
+
+
 def profiles_to_yaml(profiles: list[AgentProfile]) -> str:
     """将发现的 AgentProfile 列表转为 agents.yaml 内容"""
-    agents_data = {"agents": []}
-    for p in profiles:
-        agent = {
-            "id": p.id,
-            "name": p.name,
-            "type": p.type,
-            "tags": p.tags,
-            "enabled": True,
-            "timeout": p.timeout,
-            "config": p.config,
-        }
-        if p.auto_discovered:
-            agent["auto_discovered"] = True
-        agents_data["agents"].append(agent)
+    agents_data = {"agents": [profile_to_agent_config(profile) for profile in profiles]}
     return yaml.dump(agents_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
@@ -406,18 +263,16 @@ def merge_discovered_agents(config_path: Path, new_profiles: list[AgentProfile])
             existing_agents = []
         # 过滤掉非 dict 条目
         existing_agents = [a for a in existing_agents if isinstance(a, dict)]
+        existing_ids = {
+            str(a.get("id"))
+            for a in existing_agents
+            if isinstance(a, dict) and a.get("id")
+        }
 
     added = []
     for p in new_profiles:
         if p.id not in existing_ids:
-            entry = {
-                "id": p.id, "name": p.name, "type": p.type,
-                "tags": p.tags, "enabled": True, "timeout": p.timeout,
-                "config": p.config,
-            }
-            if p.auto_discovered:
-                entry["auto_discovered"] = True
-            existing_agents.append(entry)
+            existing_agents.append(profile_to_agent_config(p))
             added.append(p.name)
 
     with open(config_path, "w") as f:

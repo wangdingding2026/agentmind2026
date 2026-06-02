@@ -416,6 +416,14 @@ def _parse_discussion(msg: str, agent_registry) -> tuple[list[str], str] | None:
     return resolved, topic or "未指定主题"
 
 
+def _extract_discussion_word_limit(topic: str) -> str:
+    """Return the normalized discussion word limit, or the default limit."""
+    match = re.search(r'(\d+)\s*(?:个\s*)?字', topic or "")
+    if match:
+        return f"限{match.group(1)}字"
+    return "限300字"
+
+
 async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_registry, send_msg):
     import asyncio as _asyncio_impl
 
@@ -439,12 +447,7 @@ async def _run_discussion(topic: str, agent_ids: list[str], user_id: str, agent_
             break
         agent = agents[turn % len(agents)]
         turn += 1
-        _word_limit = ""
-        _lm = re.search(r'(\d+)\s*字', topic)
-        if _lm:
-            _word_limit = f"限{_lm.group(1)}字"
-        if not _word_limit:
-            _word_limit = "限300字"
+        _word_limit = _extract_discussion_word_limit(topic)
         if not history:
             context = f'关于 "{topic}"，请发表你的核心观点。{_word_limit}。'
         else:

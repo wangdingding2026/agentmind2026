@@ -505,6 +505,50 @@ class TestRunDiscussion:
             assert "限50字" in summary_prompt, f"总结缺少限50字: {summary_prompt[:80]}"
 
     @pytest.mark.asyncio
+    async def test_word_limit_accepts_ge_zi_expression(self, monkeypatch):
+        """用户说“20个字”时应识别为限20字，而不是回退到默认300字"""
+        from agentmind.services.routing_service import _run_discussion
+        from agentmind.routing.side_effects.session_registry import session_registry as _session
+
+        agent_prompts = []
+
+        async def _fake_send(text):
+            pass
+
+        call_count = [0]
+
+        async def _fake_stream(msg):
+            agent_prompts.append(msg)
+            call_count[0] += 1
+            if call_count[0] >= 3:
+                _session.stop_discussion("u1")
+            yield StreamEvent(StreamEventType.CONTENT, "观点")
+
+        ex_a = _make_healthy_executor("a", "AgentA")
+        ex_a.execute_stream = _fake_stream
+        ex_b = _make_healthy_executor("b", "AgentB")
+        ex_b.execute_stream = _fake_stream
+        reg = _fake_registry({"a": ex_a, "b": ex_b})
+
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_start", AsyncMock())
+        monkeypatch.setattr("agentmind.services.routing_service.record_task_end", AsyncMock())
+        monkeypatch.setattr("agentmind.api.router.MemoryService", FakeDiscussionMemoryService)
+
+        _session.start_discussion("u1")
+        await _run_discussion(
+            "幼儿园需要学习ai吗？回复限制20个字",
+            ["a", "b"],
+            "u1",
+            reg,
+            _fake_send,
+        )
+
+        assert len(agent_prompts) >= 3
+        for prompt in agent_prompts:
+            assert "限20字" in prompt, f"prompt 缺少限20字: {prompt[:80]}"
+            assert "300" not in prompt, f"prompt 错误回退到默认300字: {prompt[:80]}"
+
+    @pytest.mark.asyncio
     async def test_agent_stderr_error_shown(self, monkeypatch):
         """Agent stdout 为空但 stderr 有错误 → 显示错误原因"""
         from agentmind.services.routing_service import _run_discussion
